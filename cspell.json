@@ -4,6 +4,7 @@
   "import": ["@cspell/dict-es-es/cspell-ext.json"],
   "words": [
     "Stéphane",
-    "Maarek"
+    "Maarek",
+    "mybucket"
   ]
 }
