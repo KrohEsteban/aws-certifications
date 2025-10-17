@@ -10,10 +10,11 @@
   cuentas y no se debería compartir con nadie
 - **Usuarios**: Cuentas individuales que creas para personas y estas las puedes
   agrupar en diferentes grupos para darles permisos a todos a la vez
-- **Políticas**: Declaraciones que se hacen a personas, grupos o servicios y
-  contienen permisos para que accedan a ciertos servicios
-- **Principio de Mínimos Privilegios**: Es recomendable dar siempre los
-  permisos mínimos necesarios
+- **Grupos**: Colecciones de usuarios que permiten asignar políticas de forma
+  masiva, facilitando la gestión de permisos
+- **Políticas**: Documentos JSON que definen permisos específicos (Allow/Deny)
+  para acciones en recursos de AWS, que se pueden adjuntar a usuarios, grupos o
+  roles
 - **Servicio Global**: IAM es un servicio global (no está limitado a una región)
 
 ### Identificación de Cuentas
@@ -22,15 +23,16 @@
 
 - En la consola, en el desplegable superior derecho muestra solo un Account ID
   que es único y es el ID de la cuenta principal
-- En el dashboard principal puedes crear un Account Alias para personalizar el
+- En el dashboard principal de IAM puedes crear un Account Alias para personalizar el
   sign-in URL para los usuarios que creaste
 
 **Cuenta IAM**:
 
 - Puedes ingresar sin la sign-in personalizada, en ese caso tienes que elegir
   que ingresas con una cuenta IAM
-- El ID que te pide al principio es el ID de la cuenta root o en el caso que
-  le hayas puesto un alias sería el alias
+- Te pide 3 datos para ingresar: usuario, contraseña y ID. El ID que te pide al
+  principio es el ID de la cuenta root o en el caso que le hayas puesto un alias
+  sería el alias
 - Una vez que ingreses en una cuenta IAM lo puedes verificar en el desplegable
   superior derecho que dice "IAM user: nombre del usuario" junto con el
   account ID
@@ -85,12 +87,18 @@ Las políticas tienen la siguiente estructura JSON:
 
 ### Mejores Prácticas
 
-1. **Usar grupos** en lugar de asignar políticas directamente a usuarios
-2. **Principio de mínimos privilegios** - dar solo los permisos necesarios
-3. **Usar políticas administradas** de AWS cuando sea posible
-4. **Rotar credenciales** regularmente
-5. **Habilitar MFA** para cuentas privilegiadas
-6. **Monitorear** el uso de IAM con CloudTrail
+1. **Usar grupos** - Agrupa usuarios y asigna políticas a grupos en lugar de
+   usuarios individuales para facilitar la gestión
+2. **Principio de mínimos privilegios** - Otorga solo los permisos necesarios
+   para realizar las tareas requeridas
+3. **Políticas administradas de AWS** - Se pueden crear politicas personalizadas,
+  pero es mejor utiliza políticas predefinidas de AWS cuando sea posible
+4. **Rotación de credenciales** - Cambia regularmente las claves de acceso y
+   contraseñas
+5. **MFA obligatorio** - Habilita autenticación multifactor para cuentas con
+   privilegios elevados
+7. **Políticas de contraseñas** - Establece requisitos de complejidad y
+   expiración para las contraseñas
 
 ---
 
