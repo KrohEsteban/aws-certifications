@@ -36,3 +36,12 @@ Este proyecto centraliza todas las notas y recursos para las certificaciones de 
 
 - **markdownlint-cli** - Linter de Markdown
 - **cspell** - Linter de ortografía (español e inglés)
+
+### CI/CD
+
+El proyecto incluye un workflow de GitHub Actions que ejecuta automáticamente:
+
+- **Markdown Lint** - Verifica el formato de archivos Markdown
+- **Spell Check** - Verifica la ortografía en español e inglés
+
+Se ejecuta en cada push y pull request a las ramas `main` o `master`.
