@@ -37,8 +37,10 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install cspell
-        run: npm install -g cspell
+      - name: Install cspell and Spanish dictionary
+        run: |
+          npm install -g cspell
+          npm install -g @cspell/dict-es-es
 
       - name: Run cspell
         run: cspell "**/*.md" --config cspell.json

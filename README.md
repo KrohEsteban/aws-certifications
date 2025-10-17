@@ -44,4 +44,4 @@ El proyecto incluye un workflow de GitHub Actions que ejecuta automáticamente:
 - **Markdown Lint** - Verifica el formato de archivos Markdown
 - **Spell Check** - Verifica la ortografía en español e inglés
 
-Se ejecuta en cada push y pull request a las ramas `main` o `master`.
+Se ejecuta en cada push y pull request a la rama `master`.
