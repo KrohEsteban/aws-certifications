@@ -11,6 +11,8 @@
 - **Usuarios**: Cuentas individuales que creas para personas y estas las puedes agrupar en diferentes grupos para
   darles permisos a todos a la vez
 - **Grupos**: Colecciones de usuarios que permiten asignar políticas de forma masiva, facilitando la gestión de permisos
+- **Roles**: Permite darle una política a un servicio especifico de AWS, para esto lo creamos en la sección de IAM pero
+  tenemos que usarlo en nuestro servicio en cuestión
 - **Políticas**: Documentos JSON que definen permisos específicos (Allow/Deny) para acciones en recursos de AWS, que se
   pueden adjuntar a usuarios, grupos o roles
 - **Servicio Global**: IAM es un servicio global (no está limitado a una región)
@@ -36,6 +38,17 @@
 
 - Puedes habilitar un simultaneous Sign-in para poder tener dos cuentas abiertas en el mismo navegador
 - Se configura en el desplegable debajo del nombre de la cuenta (superior derecho)
+
+**Acceso por consola (CLI)**:
+
+- Para acceder por terminal se necesitan Access key y Access secret key
+- Estas key las creamos desde un usuario en la sección de Security credentials
+- También tenemos que crearlas en el mismo lugar cuando necesitamos conectar una aplicación a nuestros servicios, al
+  crearla tenes que seleccionar entre varias opciones depende para que las uses
+- Para poder utilizarlas hay que instalar los paquetes de AWS CLI y luego configurarlo con el comando `aws configure`
+- Con CLI podemos hacer exactamente las mismas cosas que hacemos por consola
+- En la consola hay un botón pegado al desplegable donde se eligen las regiones que te abre una terminal en el
+  navegador llamado CloudShell y podemos ejecutar comandos de aws por ahí también
 
 ### Estructura de Políticas IAM
 
@@ -85,9 +98,14 @@ Las políticas tienen la siguiente estructura JSON:
 4. **Rotación de credenciales** - Cambia regularmente las claves de acceso y contraseñas
 5. **MFA obligatorio** - Habilita autenticación multifactor para cuentas con privilegios elevados
 6. **Políticas de contraseñas** - Establece requisitos de complejidad y expiración para las contraseñas
+7. **IAM Security Tools IAM Credentials Report (account-level)**: Reporta una lista con el status de los users
+8. **IAM Security Tools IAM Access Advisor (user-level)**: Muestra los permisos de un usuario y cuando fue la ultima
+    ves que accedió. Con esto podemos manejar el "Principio de mínimos privilegios"
+
+## EC2 Fundamentals
 
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 15** - IAM & AWS CLI
+✅ **Completado hasta la lección 31** - IAM & AWS CLI
