@@ -2,7 +2,7 @@
 
 ## IAM & AWS CLI
 
-### Conceptos Básicos
+### Conceptos Básicos IAM
 
 **IAM** = Identity and Access Management
 
@@ -102,10 +102,35 @@ Las políticas tienen la siguiente estructura JSON:
 8. **IAM Security Tools IAM Access Advisor (user-level)**: Muestra los permisos de un usuario y cuando fue la ultima
     ves que accedió. Con esto podemos manejar el "Principio de mínimos privilegios"
 
-## EC2 Fundamentals
+## EC2 (Elastic Compute Cloud) Fundamentals
+
+### Conceptos Básicos EC2
+
+Al lanzar una instancia EC2, tener en cuenta:
+
+- **Sistema operativo**: Linux, Windows o macOS. Linux suele ser más económico y el más utilizado. Se define
+  el SO base y el software pre-instalado.
+- **Tipo de instancia (vCPU y RAM)**: Elige el tamaño según la carga. Familias general-purpose, compute-optimized y
+  memory-optimized, entre otras.
+- **Almacenamiento**:
+  - **EBS**: Volúmenes persistentes conectados por red. Se mantienen al detener la instancia. Se usan para disco raíz y
+    datos.
+  - **Instance Store**: Almacenamiento efímero local al host. Alto rendimiento, pero se pierde al detener/terminar la
+    instancia.
+  - **EFS**: Sistema de archivos compartido por red para múltiples instancias, útil para escalado horizontal.
+- **Red**:
+  - **VPC y sub-red**: Elige sub-red pública (acceso a internet directo) o privada (sin IP pública).
+  - **Direcciones IP**: IP privada obligatoria; IP pública opcional. Usa **Elastic IP** si necesitas una IP pública fija.
+- **Seguridad y acceso**:
+  - **Security Groups**: Firewall stateful a nivel de instancia/ENI. Define puertos/protocolos permitidos (por ejemplo
+    SSH 22, HTTP 80, HTTPS 443).
+  - **Par de claves (SSH/RDP)**: Requerido para acceso remoto seguro a la instancia.
+  - **Rol de IAM**: Otorga permisos a la instancia para acceder a otros servicios de AWS sin usar credenciales embebidas.
+- **Inicialización (User Data Script)**: Script de arranque para instalar paquetes y configurar la aplicación
+  automáticamente al primer boot.
 
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 31** - IAM & AWS CLI
+✅ **Completado hasta la lección 32** - EC2 Fundamentals
