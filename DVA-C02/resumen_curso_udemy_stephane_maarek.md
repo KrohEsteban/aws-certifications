@@ -139,6 +139,56 @@ Al lanzar una instancia EC2, tener en cuenta:
 
 ---
 
+### Tipos de Instancias EC2
+
+AWS ofrece distintas familias de instancias optimizadas para distintos casos de uso.
+
+**Categorías principales**:
+
+- **General Purpose**: equilibrio entre cómputo, memoria y red.
+- **Compute Optimized**: optimizadas para cómputo intensivo.
+- **Memory Optimized**: optimizadas para cargas que usan mucha RAM.
+- **Storage Optimized**: optimizadas para acceso intensivo a disco.
+- **Accelerated Computing**: con hardware acelerador (ej: GPUs).
+- **HPC Optimized**: para computación de alto rendimiento (High Performance Computing).
+
+### Convención de Nombres
+
+Las instancias siguen el patrón `instanceClass + generation + tamaño`. Por ejemplo, en `m5.2xlarge`:
+
+- **m**: instance class (familia).
+- **5**: generation (AWS las va mejorando con el tiempo).
+- **2xlarge**: tamaño de la instancia.
+
+### Familias por Caso de Uso
+
+- **General Purpose**: para web servers o levantar un repositorio de código (ej: GitLab).
+  - Ejemplos: `mac`, `t4g`, `t3`, `t3a`, `t2`, `m6g`, `m5`, `m5a`, `m5n`, `m5zn`, `m4`, `a1`
+- **Compute Optimized**: para cargas con mucha computación, como servidores dedicados de gaming o webs de alto
+  rendimiento.
+  - Ejemplos: `c6g`, `c6gn`, `c5`, `c5a`, `c5n`, `c4`
+- **Memory Optimized**: mucha RAM, para aplicaciones en tiempo real o bases de datos de alto rendimiento.
+  - Ejemplos: `r6g`, `r5`, `r5a`, `r5n`, `r4`, `x1e`, `x1`, `high memory`, `z1d`
+- **Storage Optimized**: tareas de almacenamiento intensivo, que leen/escriben grandes volúmenes de datos o mantienen
+  mucha caché.
+  - Ejemplos: `i3`, `i3en`, `d2`, `d3`, `d3en`, `h1`
+
+> 📝 **Nota**: Existen otras familias de instancias, pero estas son las más importantes para el examen.
+
+### Comparación de Ejemplo
+
+| Instance | vCPU | Mem (GiB) | Storage | Network Performance | EBS Bandwidth (Mbps) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| t2.micro | 1 | 1 | EBS-Only | Low to Moderate | - |
+| t2.xlarge | 4 | 16 | EBS-Only | Moderate | - |
+| c5d.4xlarge | 16 | 32 | 1 x 400 NVMe SSD | Up to 10 Gbps | 4,750 |
+| r5.16xlarge | 64 | 512 | EBS Only | 20 Gbps | 13,600 |
+| m5.8xlarge | 32 | 128 | EBS Only | 10 Gbps | 6,800 |
+
+> 🔗 **Recurso**: Página no oficial para comparar instancias: <https://instances.vantage.sh/>
+
+---
+
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 32** - EC2 Fundamentals
+✅ **Completado hasta la lección 35** - EC2 Fundamentals
