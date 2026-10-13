@@ -1,4 +1,4 @@
-# Ultimate AWS Certified Developer Associate 2025 DVA-C02 - Stéphane Maarek
+# Ultimate AWS Certified Developer Associate 2026 DVA-C02 - Stéphane Maarek
 
 ## IAM & AWS CLI
 
@@ -77,7 +77,9 @@ Las políticas tienen la siguiente estructura JSON:
 
 **Campos principales**:
 
-- **Version**: Fecha del formato de política (normalmente "2012-10-17").
+- **Version**: Versión del lenguaje de política (normalmente "2012-10-17"). Más que una fecha, define la sintaxis: la
+  `2012-10-17` habilita *policy variables*; la antigua `2008-10-17` no las soporta. Para políticas nuevas usar siempre
+  `2012-10-17`.
 - **Id**: Un identificador opcional para la política
 - **Statement**: Uno o más statements (requerido), son las descripciones de las políticas. Dentro del statement tenemos:
   - **Sid**: Cada statement tiene un ID identificador también
@@ -87,6 +89,9 @@ Las políticas tienen la siguiente estructura JSON:
   - **Resource**: A qué servicios o recursos se aplica la política (ej: "arn:aws:s3:::mybucket/*")
   - **Condition**: Campo opcional que se puede agregar para condiciones específicas de cuándo comienza a aplicarse la
     política
+
+> 📝 **Nota**: El orden de los elementos dentro de un statement no importa (ej: `Resource` puede ir antes que `Action`).
+> AWS evalúa la política igual sin importar el orden.
 
 ### Mejores Prácticas
 
@@ -113,17 +118,20 @@ Al lanzar una instancia EC2, tener en cuenta:
 - **Tipo de instancia (vCPU y RAM)**: Elige el tamaño según la carga. Familias general-purpose, compute-optimized y
   memory-optimized, entre otras.
 - **Almacenamiento**:
-  - **EBS**: Volúmenes persistentes conectados por red. Se mantienen al detener la instancia. Se usan para disco raíz y
-    datos.
-  - **Instance Store**: Almacenamiento efímero local al host. Alto rendimiento, pero se pierde al detener/terminar la
-    instancia.
+  - **EBS**: Volúmenes persistentes conectados por red. Se mantienen al **detener** (stop) la instancia. Al
+    **terminar** (terminate) dependen del flag "Delete on Termination": para el volumen raíz viene activado por defecto
+    (se borra), para volúmenes adicionales viene desactivado (se conservan). Se usan para disco raíz y datos.
+  - **Instance Store**: Almacenamiento efímero local al host. Alto rendimiento, pero se pierde al **detener o terminar**
+    la instancia (a diferencia de EBS, que sobrevive al stop).
   - **EFS**: Sistema de archivos compartido por red para múltiples instancias, útil para escalado horizontal.
 - **Red**:
   - **VPC y sub-red**: Elige sub-red pública (acceso a internet directo) o privada (sin IP pública).
   - **Direcciones IP**: IP privada obligatoria; IP pública opcional. Usa **Elastic IP** si necesitas una IP pública fija.
 - **Seguridad y acceso**:
   - **Security Groups**: Firewall stateful a nivel de instancia/ENI. Define puertos/protocolos permitidos (por ejemplo
-    SSH 22, HTTP 80, HTTPS 443).
+    SSH 22, HTTP 80, HTTPS 443). **Solo tienen reglas de "allow", nunca de "deny"**: todo lo que no está explícitamente
+    permitido queda bloqueado. Diferencia clave con las **NACL** (Network ACL), que son stateless, actúan a nivel de
+    subred y sí admiten reglas de allow y deny. (SG vs NACL es una comparación que cae seguido en el examen.)
   - **Par de claves (SSH/RDP)**: Requerido para acceso remoto seguro a la instancia.
   - **Rol de IAM**: Otorga permisos a la instancia para acceder a otros servicios de AWS sin usar credenciales embebidas.
 - **Inicialización (User Data Script)**: Script de arranque para instalar paquetes y configurar la aplicación
