@@ -121,9 +121,11 @@ Al lanzar una instancia EC2, tener en cuenta:
   - **EBS**: Volúmenes persistentes conectados por red. Se mantienen al **detener** (stop) la instancia. Al
     **terminar** (terminate) dependen del flag "Delete on Termination": para el volumen raíz viene activado por defecto
     (se borra), para volúmenes adicionales viene desactivado (se conservan). Se usan para disco raíz y datos.
-  - **Instance Store**: Almacenamiento efímero local al host. Alto rendimiento, pero se pierde al **detener o terminar**
-    la instancia (a diferencia de EBS, que sobrevive al stop).
-  - **EFS**: Sistema de archivos compartido por red para múltiples instancias, útil para escalado horizontal.
+  - **Instance Store**: Almacenamiento efímero local al host. Alto rendimiento, pero los datos **sobreviven a un
+    reboot (reinicio)** y se pierden al **detener (stop), hibernar o terminar** la instancia (a diferencia de EBS, que
+    sí sobrevive al stop). Es un distractor típico del examen: reboot ≠ stop.
+  - **EFS**: Sistema de archivos compartido por red para múltiples instancias **en varias AZ a la vez** (solo Linux),
+    útil para escalado horizontal.
 - **Red**:
   - **VPC y sub-red**: Elige sub-red pública (acceso a internet directo) o privada (sin IP pública).
   - **Direcciones IP**: IP privada obligatoria; IP pública opcional. Usa **Elastic IP** si necesitas una IP pública fija.
@@ -186,6 +188,52 @@ Las instancias siguen el patrón `instanceClass + generation + tamaño`. Por eje
 | m5.8xlarge | 32 | 128 | EBS Only | 10 Gbps | 6,800 |
 
 > 🔗 **Recurso**: Página no oficial para comparar instancias: <https://instances.vantage.sh/>
+
+---
+
+### Security Groups
+
+Los **Security Groups** son la mejor forma de controlar quién tiene acceso a una instancia EC2. Actúan como un
+firewall a nivel de instancia.
+
+- Por defecto **todo está denegado**: solo pueden contener reglas de **allow** (nunca de deny).
+- Pueden referenciar el origen por **IP** o por **otro Security Group**.
+
+**Parámetros de una regla**:
+
+- **Type**: tipo de tráfico (por ejemplo HTTP o SSH).
+- **Protocol**: protocolo (por ejemplo TCP).
+- **Port Range**: el puerto al que queremos dar acceso.
+- **Source**: desde dónde se puede acceder a ese puerto (`0.0.0.0/0` es desde cualquier parte).
+- **Description**: descripción corta de la regla.
+
+Una instancia puede tener **varios Security Groups**. Por ejemplo, para deployar una app se puede dar acceso SSH a
+una sola IP (la tuya) en un Security Group, y el acceso HTTPS abierto a todos en otro, para que cualquiera pueda ver
+la app.
+
+> 📝 **Nota**: En lugar de definir en un Security Group la IP de otra instancia, es mejor **referenciar el Security
+> Group de la otra instancia**. Así las instancias pueden comunicarse entre sí sin depender de IPs fijas, incluso si
+> estas cambian.
+
+### Puertos Comunes
+
+| Puerto | Protocolo | Uso |
+| :--- | :--- | :--- |
+| 21 | FTP | Transferencia de archivos (sin cifrar) |
+| 22 | SSH | Ingreso seguro a la shell en instancias Linux |
+| 22 | SFTP | Transferencia de archivos de forma segura (corre sobre SSH) |
+| 80 | HTTP | Acceso a web sin certificado |
+| 443 | HTTPS | Acceso a webs con certificado |
+| 3389 | RDP | Acceso a escritorio remoto en instancias Windows |
+
+> 📝 **Nota**: SFTP usa el puerto **22** porque viaja sobre SSH; no confundir con FTP (**21**), que es el protocolo
+> clásico de transferencia sin cifrar.
+
+### Formas de Conexión a una Instancia
+
+- **SSH**: desde una terminal de Linux, macOS o Windows 10 en adelante.
+- **PuTTY**: aplicación para conectarse desde cualquier versión de Windows.
+- **EC2 Instance Connect**: conexión desde el navegador (web) a cualquier instancia, sin necesidad de clave local.
 
 ---
 
