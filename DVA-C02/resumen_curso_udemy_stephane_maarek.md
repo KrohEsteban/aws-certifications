@@ -139,8 +139,6 @@ Al lanzar una instancia EC2, tener en cuenta:
 - **Inicialización (User Data Script)**: Script de arranque para instalar paquetes y configurar la aplicación
   automáticamente al primer boot.
 
----
-
 ### Tipos de Instancias EC2
 
 AWS ofrece distintas familias de instancias optimizadas para distintos casos de uso.
@@ -189,8 +187,6 @@ Las instancias siguen el patrón `instanceClass + generation + tamaño`. Por eje
 
 > 🔗 **Recurso**: Página no oficial para comparar instancias: <https://instances.vantage.sh/>
 
----
-
 ### Security Groups
 
 Los **Security Groups** son la mejor forma de controlar quién tiene acceso a una instancia EC2. Actúan como un
@@ -235,8 +231,92 @@ la app.
 - **PuTTY**: aplicación para conectarse desde cualquier versión de Windows.
 - **EC2 Instance Connect**: conexión desde el navegador (web) a cualquier instancia, sin necesidad de clave local.
 
+## EC2 Instance Storage
+
+### AMI (Amazon Machine Image)
+
+Una **AMI** es una imagen con el sistema operativo y el software preinstalado que usamos como base para lanzar
+instancias. Permite levantar una instancia con todas las herramientas que necesitamos ya configuradas.
+
+Opciones de origen:
+
+- **AMI públicas de Amazon**: imágenes base provistas por AWS.
+- **AMI propias (custom)**: creadas y mantenidas por nosotros.
+- **AMI del AWS Marketplace**: imágenes que terceros venden (y que también se pueden comprar).
+
+**Cómo crear una AMI propia**: se lanza una instancia, se configura como queremos (paquetes, ajustes, etc.) y luego
+se crea la AMI a partir de esa instancia para reutilizarla al lanzar otras.
+
+### EBS (Elastic Block Store) Volumes
+
+Un **EBS Volume** es un disco de red que se conecta a una instancia para guardar información que **persiste aunque la
+instancia se termine** (según el flag "Delete on Termination"). Es un concepto parecido a los volúmenes de Docker.
+
+- Se conectan a través de la **red** (no son discos físicos locales).
+- Una instancia puede tener **varios EBS Volumes** conectados, pero siempre **dentro de su misma Availability Zone**.
+- Para mover un EBS Volume de una AZ a otra hay que hacer un **snapshot** y restaurarlo en la AZ destino.
+- El **snapshot** también sirve como **backup** del volumen. Se puede **archivar** para reducir costos (no está en uso)
+  y restaurar cuando se necesite.
+
+> 📝 **Nota**: El EBS Volume está atado a una sola AZ. El puente entre AZs (o entre regiones) siempre es el snapshot.
+
+### Tipos de EBS Volumes
+
+Se diferencian por tamaño, **throughput** (rendimiento) e **IOPS** (operaciones de I/O por segundo).
+
+| Tipo | Tecnología | Caso de uso | IOPS máx. |
+| :--- | :--- | :--- | :--- |
+| **gp2 / gp3** | SSD | General purpose (disco raíz, apps) | hasta 16.000 |
+| **io1 / io2** | SSD | Highest-performance (bases de datos críticas) | hasta 64.000 (io2 Block Express hasta 256.000) |
+| **st1** | HDD | Bajo costo, acceso frecuente (throughput alto) | - |
+| **sc1** | HDD | Costo más bajo, acceso poco frecuente (cold) | - |
+
+> 📝 **Nota**: El tope de 64.000 IOPS en io1/io2 se garantiza solo en instancias basadas en el sistema **Nitro**; en
+> otras familias el máximo es 32.000. Los volúmenes HDD (st1/sc1) **no** sirven como disco de arranque (boot).
+
+**EBS Multi-Attach**: solo los volúmenes **io1 / io2** se pueden conectar a varias instancias a la vez (hasta **16
+instancias**, todas dentro de la **misma Availability Zone**).
+
+### EC2 Instance Store
+
+Se comporta como un **disco físico** local al host, con **mucho más rendimiento** que un EBS Volume, pero es
+**efímero**: lo que se guarda se pierde al terminar la instancia. Se usa para **caché** o **contenido temporal**.
+
+### EFS (Elastic File System)
+
+Es un **sistema de archivos por red** que se puede montar en **múltiples instancias en varias AZ a la vez**, y se
+conecta controlando el acceso con **Security Groups**. Se paga por uso (tiende a ser más caro que EBS) y se usa para
+**compartir datos entre varias EC2**, por ejemplo para servir el mismo WordPress desde todas las instancias.
+
+- Compatible **solo con Linux** (usa el protocolo NFS).
+- Usa **KMS** para encriptar los archivos.
+- **No** hay que definir una capacidad: escala automáticamente.
+
+**Performance mode** (se define al crear el file system):
+
+- **General Purpose**: el recomendado para la mayoría de los casos (web servers, CMS). Menor latencia por operación.
+- **Max I/O**: para cargas muy paralelas y pesadas (big data, procesamiento de video). Mayor latencia por operación.
+
+**Throughput mode** (eje separado del performance mode):
+
+- **Bursting** (por defecto): el rendimiento escala con la cantidad de datos almacenados.
+- **Provisioned**: definimos nosotros un rendimiento fijo, independiente del tamaño.
+- **Elastic**: escala automáticamente según la demanda.
+
+**Storage tiers** (permiten ahorrar hasta ~90% en costos de almacenamiento):
+
+- **Standard**: para archivos de acceso frecuente.
+- **Infrequent Access (IA)**: almacenamiento más barato, pero con costo al recuperar archivos.
+- **Archive**: para archivos que se acceden pocas veces al año; alrededor de 50% más barato que IA.
+
+Se pueden definir **lifecycle policies** para mover archivos entre tiers automáticamente según su frecuencia de uso.
+
+> 📝 **Nota del examen**: no confundir los dos ejes de configuración de EFS. **Performance mode** (General Purpose /
+> Max I/O) es sobre latencia; **Throughput mode** (Bursting / Provisioned / Elastic) es sobre rendimiento. Son
+> independientes entre sí.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 35** - EC2 Fundamentals
+✅ **Completado hasta la lección 56** - EC2 Instance Storage
