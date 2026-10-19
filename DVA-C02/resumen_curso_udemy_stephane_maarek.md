@@ -2,6 +2,8 @@
 
 ## IAM & AWS CLI
 
+> 🔗 **Documentación oficial**: [AWS IAM User Guide](https://docs.aws.amazon.com/IAM/latest/UserGuide/introduction.html)
+
 ### Conceptos Básicos IAM
 
 **IAM** = Identity and Access Management
@@ -108,6 +110,8 @@ Las políticas tienen la siguiente estructura JSON:
     ves que accedió. Con esto podemos manejar el "Principio de mínimos privilegios"
 
 ## EC2 (Elastic Compute Cloud) Fundamentals
+
+> 🔗 **Documentación oficial**: [Amazon EC2 User Guide](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/concepts.html)
 
 ### Conceptos Básicos EC2
 
@@ -233,6 +237,9 @@ la app.
 
 ## EC2 Instance Storage
 
+> 🔗 **Documentación oficial**: [Amazon EBS](https://docs.aws.amazon.com/ebs/latest/userguide/what-is-ebs.html) ·
+> [Amazon EFS](https://docs.aws.amazon.com/efs/latest/ug/whatisefs.html)
+
 ### AMI (Amazon Machine Image)
 
 Una **AMI** es una imagen con el sistema operativo y el software preinstalado que usamos como base para lanzar
@@ -315,8 +322,41 @@ Se pueden definir **lifecycle policies** para mover archivos entre tiers automá
 > Max I/O) es sobre latencia; **Throughput mode** (Bursting / Provisioned / Elastic) es sobre rendimiento. Son
 > independientes entre sí.
 
+## Scalability vs Availability
+
+La **escalabilidad** es la capacidad de un sistema de adaptarse a una mayor carga; la **disponibilidad** es la
+capacidad de seguir funcionando aunque falle una parte de la infraestructura. Están relacionadas pero son conceptos
+distintos.
+
+### Escalabilidad (Scalability)
+
+**Vertical (scale up / scale down)**:
+
+- Pasar a un servidor más grande (o más chico), por ejemplo subir de `t2.micro` a `t2.large`.
+- Es la forma más sencilla de escalar cuando el ajuste de carga no es muy grande.
+- Tiene un límite de hardware. Es típica en bases de datos no distribuidas (por ejemplo RDS).
+
+**Horizontal (scale out / scale in)**:
+
+- Tener **varias instancias** que ofrecen la misma app; los pedidos se distribuyen entre ellas.
+- Más costoso, pero se pueden agregar tantas instancias como se necesiten, ideal para apps con muchísimos usuarios.
+- Es la base de los **Auto Scaling Groups (ASG)** combinados con un **Load Balancer**.
+
+### Disponibilidad (Availability)
+
+Es poder seguir accediendo a la app aunque una instancia (o una AZ entera) se caiga. Normalmente se logra corriendo
+la app en **al menos 2 Availability Zones**. Dos enfoques:
+
+- **Pasivo (activo-pasivo)**: una instancia en espera (standby) que se activa cuando la principal falla.
+- **Activo (asociado a la escalabilidad horizontal)**: varias instancias en distintas AZ trabajando en conjunto; si
+  una se cae, las otras siguen recibiendo los pedidos.
+
+> 📝 **Nota del examen**: escalabilidad ≠ disponibilidad. La escalabilidad responde a "¿cuánta carga aguanto?"; la
+> disponibilidad responde a "¿sigo online si algo falla?". En AWS la alta disponibilidad casi siempre implica
+> **multi-AZ**.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 56** - EC2 Instance Storage
+✅ **Completado hasta la lección 58** - AWS Fundamentals: ELB + ASG
