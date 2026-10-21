@@ -355,6 +355,120 @@ la app en **al menos 2 Availability Zones**. Dos enfoques:
 > disponibilidad responde a "¿sigo online si algo falla?". En AWS la alta disponibilidad casi siempre implica
 > **multi-AZ**.
 
+## Elastic Load Balancing (ELB)
+
+> 🔗 **Documentación oficial**: [Elastic Load Balancing User Guide](https://docs.aws.amazon.com/elasticloadbalancing/latest/userguide/what-is-load-balancing.html)
+
+El **ELB** es un servidor administrado que redirige el tráfico entre varias instancias o servicios. Usos principales:
+
+- Distribuir la carga de los usuarios entre múltiples instancias.
+- Exponer un **único punto de entrada** (DNS) para la aplicación.
+- Redirigir automáticamente el tráfico fuera de las instancias caídas.
+- Hacer **health checks** periódicos sobre las instancias.
+- Terminar **SSL/TLS** (proveer HTTPS a las webs).
+- Aplicar **stickiness** con cookies (ver más abajo).
+- Mantener **alta disponibilidad** entre distintas AZ.
+- Separar el tráfico público del privado.
+
+El ELB chequea un endpoint de salud (por ejemplo `/health`) para saber si una instancia está activa y decidir si le
+envía tráfico o la saca de rotación.
+
+### Stickiness (Sticky Sessions)
+
+**Stickiness** (o *session affinity*) es la capacidad de "pegar" a un mismo usuario siempre a la **misma instancia**
+durante su sesión. El load balancer genera una **cookie** y, mientras esa cookie siga vigente, todas las requests de
+ese usuario van a la misma instancia en lugar de repartirse.
+
+- **Para qué sirve**: cuando la instancia guarda **estado de sesión en memoria** (login, carrito de compras, datos
+  temporales). Si el usuario cayera en otra instancia, perdería esa sesión.
+- **Contra**: puede desbalancear la carga, porque los usuarios quedan atados a instancias puntuales.
+- En **ALB** las cookies pueden ser **duration-based** (generadas por el LB) o **application-based** (basadas en una
+  cookie de la app). Se habilita **a nivel de target group**.
+
+> 📝 **Nota**: la mejor práctica moderna es hacer las instancias **stateless** (guardar la sesión en un store externo
+> como ElastiCache o DynamoDB) y así evitar depender de stickiness.
+
+### Tipos de Load Balancer
+
+| Tipo | Año | Capa (OSI) | Protocolos | Estado |
+| :--- | :--- | :--- | :--- | :--- |
+| **Classic Load Balancer (CLB)** | 2009 | 4 y 7 | HTTP, HTTPS, TCP, SSL (TCP seguro) | Deprecado (2022) |
+| **Application Load Balancer (ALB)** | 2016 | 7 | HTTP, HTTPS, WebSocket, HTTP/2 | Vigente |
+| **Network Load Balancer (NLB)** | 2017 | 4 | TCP, TLS (TCP seguro), UDP | Vigente |
+| **Gateway Load Balancer (GWLB)** | 2020 | 3 | IP (protocolo GENEVE) | Vigente |
+
+Es recomendable usar los load balancers nuevos (ALB/NLB/GWLB). Se pueden configurar como **internal** (redes privadas)
+o **internet-facing / external** (redes públicas).
+
+> 📝 **Qué son las "capas" (layers)**: se refiere al modelo **OSI**. **Layer 7** es la capa de aplicación (entiende
+> HTTP: paths, headers, cookies). **Layer 4** es la capa de transporte (solo ve TCP/UDP, puertos e IPs, no el
+> contenido HTTP). **Layer 3** es la capa de red (trabaja con paquetes IP puros). Regla rápida: **ALB = 7, NLB = 4,
+> GWLB = 3**.
+>
+> 📝 **Patrón de seguridad**: para una app pública, el Security Group del load balancer permite el ingreso desde
+> cualquier lado (`0.0.0.0/0`), y el Security Group de las instancias solo permite tráfico **proveniente del Security
+> Group del load balancer**. Así nadie llega directo a las instancias, solo a través del LB.
+
+### ALB (Application Load Balancer)
+
+Opera en **layer 7 (HTTP/HTTPS)**. Sirve para acceder a múltiples aplicaciones en la misma instancia, o a múltiples
+instancias con la misma aplicación. Soporta redirección de HTTP a HTTPS.
+
+- **Routing avanzado** hacia distintos **target groups** según el **path**, el **hostname**, la **query string** o
+  los **headers** de la request. Muy usado para **microservicios**.
+- **Target groups posibles**: instancias EC2, **ECS tasks**, **Lambda functions**, direcciones IP (deben ser
+  privadas). Puede haber varios target groups, y el health check se hace **a nivel de target group**.
+
+**Headers con los datos del cliente**: como el backend solo ve la conexión que viene del ALB (no la del usuario
+original), el ALB agrega la información real del cliente en tres headers HTTP:
+
+- **`X-Forwarded-For`**: la **IP** del cliente original.
+- **`X-Forwarded-Proto`**: el **protocolo** usado por el cliente (HTTP o HTTPS).
+- **`X-Forwarded-Port`**: el **puerto** usado por el cliente.
+
+### NLB (Network Load Balancer)
+
+Opera en **layer 4 (TCP/UDP)**. Ofrece **alto rendimiento con latencia ultra baja**. Tiene una **IP estática por
+Availability Zone** y soporta asignarle una **Elastic IP**.
+
+- Se puede tener una app HTTP en la instancia y exponerla por el NLB a través de TCP.
+- **Target groups posibles**: instancias EC2, direcciones IP privadas y un **Application Load Balancer** (este último
+  patrón sirve para combinar la IP estática del NLB con el routing HTTP del ALB).
+- El health check del NLB soporta los protocolos **TCP, HTTP y HTTPS**.
+
+### GWLB (Gateway Load Balancer)
+
+Opera en **layer 3 (paquetes IP)**. Se usa para **inspeccionar el tráfico** antes de que llegue a la aplicación: el
+usuario se conecta al GWLB, este reenvía los paquetes a una flota de **appliances de terceros** (firewalls,
+sistemas de intrusion detection/prevention, análisis de tráfico, etc.) y, si el tráfico está limpio, lo deja llegar a
+la app.
+
+Combina dos funciones en uno:
+
+- **Transparent network gateway**: un único punto de entrada y salida para todo el tráfico.
+- **Load balancer**: distribuye el tráfico entre los appliances y los escala según la demanda.
+
+- **Target groups posibles**: instancias EC2 y direcciones IP privadas.
+
+> 📝 **Nota del examen**: si una pregunta menciona el protocolo **GENEVE** o el puerto **6081**, está hablando del
+> **Gateway Load Balancer**. Es su firma inconfundible.
+
+### Combinar Load Balancers
+
+Los load balancers se pueden **encadenar**, no porque hagan lo mismo en paralelo, sino porque cada uno aporta algo en
+una capa distinta. No conviene apilarlos sin razón (suma latencia y costo); solo cuando cada uno resuelve un problema
+que los otros no pueden.
+
+- **NLB → ALB** (el combo más frecuente): el ALB se registra como **target group del NLB**. El NLB aporta la **IP
+  estática / Elastic IP** (que el ALB no tiene) y el ALB aporta el **routing HTTP** (path, host, headers).
+  Flujo: `Usuario → NLB (IP fija) → ALB (routing L7) → instancias`.
+- **GWLB → ALB/NLB**: el GWLB se mete **antes** para inspeccionar el tráfico con appliances de seguridad
+  (firewall/IDS/IPS) y luego lo deja seguir hacia el ALB/NLB que balancea la app.
+  Flujo: `Usuario → appliances (GWLB) → ALB/NLB → instancias`.
+
+> 📝 **Nota del examen**: si el escenario pide **IP estática y a la vez routing por path/host**, la respuesta es un
+> **NLB con un ALB como target**. Es el patrón de combinación que más cae.
+
 ---
 
 ## Progreso del Curso
