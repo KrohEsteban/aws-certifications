@@ -469,8 +469,111 @@ que los otros no pueden.
 > 📝 **Nota del examen**: si el escenario pide **IP estática y a la vez routing por path/host**, la respuesta es un
 > **NLB con un ALB como target**. Es el patrón de combinación que más cae.
 
+### Cross-Zone Load Balancing
+
+Permite que cada nodo del load balancer (hay uno por AZ) distribuya la carga entre las instancias de **todas las AZ**,
+no solo las de su propia zona.
+
+- **Habilitado**: con 10 instancias en una AZ y 2 en otra, el tráfico se reparte parejo entre las **12** instancias.
+- **Deshabilitado**: cada nodo reparte solo entre las instancias de su AZ (el de la primera zona entre 10, el de la
+  otra entre 2), lo que puede desbalancear la carga.
+
+Comportamiento por defecto y costo:
+
+- **ALB**: habilitado por defecto y **sin cargo extra**.
+- **NLB** y **GWLB**: deshabilitado por defecto; si se habilita, **genera cargos** por transferencia entre AZ.
+
+### Certificados SSL/TLS en ELB
+
+Un certificado permite cifrar las conexiones entre el cliente y el ELB (HTTPS). El ELB **termina** el TLS: el usuario
+habla **con cifrado** (HTTPS) con el ELB, y el ELB puede hablar **sin cifrado** (HTTP) con la instancia por detrás.
+
+- Los certificados se pueden gestionar con **ACM (AWS Certificate Manager)** o subir los propios.
+- Tienen **fecha de expiración**, hay que renovarlos (ACM puede renovarlos automáticamente).
+- Para servir **varias aplicaciones con distinto dominio** detrás del mismo load balancer se cargan **múltiples
+  certificados** usando **SNI (Server Name Indication)**, que elige el certificado correcto según el dominio pedido.
+  Soportado por **ALB y NLB** (el viejo CLB solo admite un certificado).
+
+> 📝 **SSL vs TLS**: no son cosas distintas por tipo de tráfico. **TLS (Transport Layer Security)** es la versión
+> moderna y segura que **reemplazó a SSL (Secure Sockets Layer)**, hoy obsoleto. Se siguen llamando "certificados SSL"
+> por costumbre, pero lo que se usa en la práctica es TLS.
+
+### Connection Draining (Deregistration Delay)
+
+Cuando una instancia **se desregistra o queda unhealthy**, el ELB le da un período para **terminar las requests en
+curso** antes de cortar la conexión, así no se interrumpe a los usuarios que estaban a mitad de una operación.
+
+- Valor por defecto: **300 segundos**. Rango configurable: **1 a 3.600 segundos** (0 lo desactiva).
+- Conviene ajustarlo al tiempo típico de las requests: más alto si hay procesos largos, más bajo si son cortos.
+
+> 📝 **Nota**: "Connection Draining" es el nombre en el **CLB**; en **ALB y NLB** el mismo concepto se llama
+> **deregistration delay**. Son lo mismo para el examen.
+
+## Auto Scaling Group (ASG)
+
+> 🔗 **Documentación oficial**: [Amazon EC2 Auto Scaling User Guide](https://docs.aws.amazon.com/autoscaling/ec2/userguide/what-is-amazon-ec2-auto-scaling.html)
+
+Una aplicación tiene más o menos usuarios según el momento. El **ASG** permite **escalar OUT o IN** las instancias EC2
+automáticamente, para tener más o menos instancias con la misma app. Se configuran tres valores:
+
+- **Minimum capacity**: mínimo de instancias corriendo.
+- **Desired capacity**: cantidad que el ASG intenta mantener.
+- **Maximum capacity**: tope de instancias.
+
+Al **asociar un ASG con un ELB**, las N instancias del ASG se registran automáticamente en el ELB. La ventaja de
+usarlos juntos: si el ELB detecta (vía health check) que una instancia está caída, el ASG la **termina y crea otra**
+en su lugar.
+
+- El disparador de escalado (out/in) suele ser una **alarma de CloudWatch**.
+- El ASG **es gratis**: solo se paga por las instancias y servicios asociados.
+
+**Launch Template** (necesario para crear el ASG), debe incluir:
+
+- AMI + instance type
+- EC2 User Data
+- EBS Volumes
+- Security Groups
+- SSH Key Pair
+- IAM Roles para las instancias EC2
+- Network + Subnets
+- Load Balancer Information
+
+Además del template se define: **min size, max size, desired/initial capacity** y las **scaling policies**.
+
+### ASG - Scaling Policies
+
+**Dynamic Scaling**:
+
+- **Target Tracking**: se fija un valor objetivo que el ASG intenta mantener (por ejemplo, CPU promedio al 40%) y
+  escala out/in para acercarse a ese valor. Es la más simple de configurar.
+- **Simple / Step Scaling**: se dispara con **alarmas de CloudWatch** para escalar out o in (step permite escalones
+  según cuánto se supera el umbral).
+
+**Scheduled Scaling**: anticipa el escalado según un **patrón horario conocido** (por ejemplo, menos instancias de
+noche si hay menos usuarios).
+
+**Predictive Scaling**: usa machine learning para **detectar patrones** y escalar de forma anticipada en cargas
+cíclicas (por ejemplo, más usuarios los fines de semana).
+
+**Métricas típicas para escalar**:
+
+- **CPUUtilization**: según el uso de CPU de las instancias.
+- **RequestCountPerTarget**: para mantener estable el número de requests por instancia.
+- **Average Network In/Out**: para apps que suben o descargan muchos archivos.
+- Cualquier **métrica custom** de CloudWatch.
+
+> 📝 **Cooldown period**: por defecto **300 segundos** durante los cuales el ASG no lanza ni termina instancias (para
+> estabilizarse). Conviene usar una **AMI** con todo preinstalado para que las instancias arranquen rápido y así
+> reducir el impacto del cooldown.
+
+### ASG - Instance Refresh
+
+Cuando queremos actualizar todo el ASG con un **nuevo launch template** y recrear las instancias, se activa el
+**Instance Refresh**: mantiene un mínimo de instancias trabajando (según un porcentaje de salud configurable) y va
+reemplazando el resto de a poco, sin cortar el servicio.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 58** - AWS Fundamentals: ELB + ASG
+✅ **Completado hasta la lección 76** - AWS Fundamentals: ELB + ASG
