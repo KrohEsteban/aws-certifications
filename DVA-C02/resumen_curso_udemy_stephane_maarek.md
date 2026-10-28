@@ -572,6 +572,46 @@ Cuando queremos actualizar todo el ASG con un **nuevo launch template** y recrea
 **Instance Refresh**: mantiene un mínimo de instancias trabajando (según un porcentaje de salud configurable) y va
 reemplazando el resto de a poco, sin cortar el servicio.
 
+## Amazon RDS (Relational Database Service)
+
+> 🔗 **Documentación oficial**: [Amazon RDS User Guide](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Welcome.html)
+
+Es el servicio administrado para aprovisionar bases de datos **relacionales** (que usan SQL como lenguaje). Soporta
+varios motores (engines): **PostgreSQL, MySQL, MariaDB, Oracle, Microsoft SQL Server, IBM DB2** y **Aurora** (base de
+datos propietaria de AWS, compatible con MySQL y PostgreSQL).
+
+### Por qué usar RDS en lugar de instalar la DB en una EC2 propia
+
+- Aprovisionamiento automático y **parches de SO** aplicados automáticamente.
+- **Backups** automáticos y restore a un punto en el tiempo (point-in-time recovery).
+- **Dashboard de monitoreo** incluido.
+- **Read Replicas** para repartir las lecturas y mejorar la performance.
+- **Multi-AZ** para disaster recovery (alta disponibilidad con failover automático).
+- **Ventanas de mantenimiento** para las actualizaciones.
+- **Escalado vertical** (cambiar el tamaño de la instancia) y de **storage** (crecer el disco).
+- Almacenamiento **respaldado por EBS** (gp2/gp3).
+- **No se puede** ingresar por SSH a las instancias de RDS (es un servicio administrado).
+
+> 📝 **"Storage backed by EBS"**: el disco de una instancia RDS vive sobre volúmenes **EBS** (los mismos discos de red
+> de EC2). Por eso RDS usa tipos como gp2/gp3 y puede crecer el almacenamiento.
+>
+> 📝 **Ojo con "escalado horizontal"**: RDS **no** escala horizontalmente solo (no es un ASG). El escalado vertical y
+> el de storage sí los gestiona RDS. Para repartir lecturas se usan **Read Replicas** (hasta 15), que se agregan de
+> forma manual. La escritura siempre va a la instancia principal.
+
+### RDS Storage Auto Scaling
+
+Permite que el almacenamiento de la DB **crezca automáticamente** cuando se está quedando sin espacio, para evitar
+tener que escalarlo a mano. Por ejemplo, si creamos una RDS con 20 GB y se llena, el auto scaling agranda el disco
+solo.
+
+- Hay que definir un **Maximum Storage Threshold**: el tope hasta el que puede crecer.
+- Se dispara automáticamente cuando se cumplen **las tres condiciones**:
+  1. El espacio libre es **menor al 10%** del almacenamiento asignado.
+  2. La condición de poco espacio dura **al menos 5 minutos**.
+  3. Pasaron **al menos 6 horas** desde la última modificación de storage.
+- Útil para aplicaciones con uso **poco predecible**. Soporta todos los engines de RDS.
+
 ---
 
 ## Progreso del Curso
