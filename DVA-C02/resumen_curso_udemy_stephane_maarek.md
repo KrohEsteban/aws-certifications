@@ -688,6 +688,46 @@ Un proxy administrado que centraliza las conexiones a la DB. Beneficios:
 > 📝 **Caso de uso estrella**: muchas funciones **Lambda** conectándose a la misma DB. Lambda abre muchas conexiones
 > cortas y frecuentes; RDS Proxy las agrupa y evita saturar la base. Es pregunta frecuente en el examen.
 
+## Amazon ElastiCache
+
+> 🔗 **Documentación oficial**: [Amazon ElastiCache: Redis vs Memcached](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/SelectEngine.html)
+
+Es un servicio administrado de almacenamiento **en memoria (RAM)** de tipo **clave-valor (NoSQL)**, con dos motores:
+**Redis** o **Memcached**. Es un servicio **aparte de RDS** (no es la RAM del RDS). Se usa principalmente como
+**caché** para acelerar aplicaciones web y **reducir la carga sobre la base de datos** en cargas intensivas. AWS se
+encarga del mantenimiento del sistema operativo.
+
+Casos de uso típicos:
+
+- **Cache de base de datos**: cuando la app necesita datos, consulta primero a ElastiCache; si no están ahí (cache
+  miss), va al RDS y guarda el resultado en la caché para la próxima vez.
+- **Session store**: guardar la sesión de un usuario para recuperarla rápido mientras navega, lo que ayuda a mantener
+  la aplicación **stateless** (las instancias no dependen de guardar la sesión en memoria local).
+
+### Redis vs Memcached
+
+| Característica | Redis | Memcached |
+| :--- | :--- | :--- |
+| Alta disponibilidad | **Multi-AZ** con auto failover | No (nodos independientes) |
+| Read Replicas | Sí (escalar lecturas + HA) | No |
+| Persistencia de datos | Sí (AOF persistence) | No (datos efímeros) |
+| Backup & restore | Sí | No |
+| Estructuras de datos | Sets, Sorted Sets, listas, etc. | Solo clave-valor simple |
+| Arquitectura | Principalmente single-threaded | **Multi-threaded** (varios cores) |
+| Partición (sharding) | Sí | Sí (nodos particionados) |
+
+Regla rápida: **Redis** cuando necesitás durabilidad, alta disponibilidad y features avanzadas; **Memcached** para una
+caché simple, pura clave-valor, que escale horizontalmente con muchos nodos.
+
+> 📝 **Conceptos que aparecen acá**:
+>
+> - **AOF (Append Only File)**: un log en disco donde Redis registra cada escritura, para poder **recuperar los datos**
+>   si el nodo se reinicia. Es lo que le da durabilidad (Memcached no lo tiene).
+> - **Sets / Sorted Sets**: estructuras de datos que Redis maneja nativamente. Un **Set** es una colección sin
+>   duplicados; un **Sorted Set** ordena los elementos por un puntaje (ideal para rankings/leaderboards).
+> - **Multi-threaded**: Memcached usa **varios hilos/núcleos** en paralelo, por lo que aprovecha mejor una máquina con
+>   muchos cores. Redis es principalmente de un solo hilo.
+
 ---
 
 ## Progreso del Curso
