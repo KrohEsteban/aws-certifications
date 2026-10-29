@@ -612,6 +612,82 @@ solo.
   3. Pasaron **al menos 6 horas** desde la última modificación de storage.
 - Útil para aplicaciones con uso **poco predecible**. Soporta todos los engines de RDS.
 
+### RDS Read Replicas vs Multi-AZ
+
+**Read Replicas** (replicas de solo lectura, para mejorar la performance):
+
+- Son copias de la DB principal que **solo sirven para leer** (las escrituras van siempre a la principal).
+- Se pueden crear hasta **15 replicas**, en la misma AZ, **cross-AZ** o **cross-region**.
+- Una replica puede **promoverse a DB principal**, pero al hacerlo deja de estar ligada a la DB original.
+- La aplicación tiene que apuntar sus consultas de lectura a las replicas (su propio connection string).
+- **Caso típico**: tenés una RDS funcionando y querés agregar un dashboard de reportes. Para no cargar la DB
+  principal, creás una replica y hacés las consultas de solo lectura ahí.
+
+> 📝 **Costos de red en Read Replicas**: cuando las replicas están en la **misma AZ** no hay costo de transferencia;
+> si están en **otra AZ** (cross-AZ), sí se cobra la red. Es un comportamiento típico de AWS para tráfico cross-AZ.
+
+**Multi-AZ** (para disaster recovery / alta disponibilidad):
+
+- Es una replica **standby sincrónica** que se convierte en principal automáticamente (failover) si hay un problema:
+  se pierde la conexión, falla el storage, etc.
+- Una Read Replica también se puede configurar como Multi-AZ para DR.
+- **Pasar de Single-AZ a Multi-AZ**: se hace con un clic en "Modify" sobre la instancia; **sin downtime**.
+  Internamente toma un **snapshot EBS**, lo restaura en otra AZ, sincroniza las dos DB y ya queda en Multi-AZ.
+
+## Amazon Aurora
+
+> 🔗 **Documentación oficial**: [Amazon Aurora User Guide](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/CHAP_AuroraOverview.html)
+
+Aurora es una tecnología **propietaria de AWS** (no open source). Soporta los mismos drivers de conexión que **MySQL
+y PostgreSQL**. Está optimizada para la nube:
+
+- Hasta **5x** mejor performance que MySQL y **3x** que PostgreSQL en RDS, aunque cuesta ~20% más.
+- El storage crece automáticamente de **10 GB hasta 256 TiB** (en incrementos de 10 GB).
+- Hasta **15 read replicas** (más rápidas que las de MySQL) y failover casi instantáneo por ser cloud-native.
+
+### Almacenamiento de Aurora (6 copias en 3 AZ)
+
+- Mantiene **6 copias de los datos distribuidas en 3 Availability Zones**.
+- Necesita **4 de 6** copias disponibles para **escribir**, y **3 de 6** para **leer** (modelo de quórum).
+- **Self-healing**: si un bloque se corrompe, se repara automáticamente usando las otras copias.
+- El almacenamiento no está en un solo volumen: se expande a través de **múltiples volúmenes**.
+
+Una de las instancias actúa como **master (writer)**; si se cae, otra la reemplaza en **menos de 30 segundos**.
+Además del master se pueden tener hasta **15 read replicas** (con cross-region replication), y cualquiera puede
+promoverse a master.
+
+### Endpoints de Aurora
+
+A diferencia de RDS (donde manejás una lista de connection strings para las replicas), Aurora expone dos endpoints:
+
+- **Writer endpoint**: se conecta siempre al **master** para escribir.
+- **Reader endpoint**: tiene un **Load Balancer interno** que reparte las lecturas entre las replicas.
+
+### RDS y Aurora - Security
+
+- **Encriptación en reposo** con **AWS KMS**: se define **al lanzar** la instancia. Si el master no está encriptado,
+  las replicas tampoco pueden estarlo. Para encriptar una DB ya creada sin cifrado: hacés un **snapshot**, y al
+  restaurarlo lo definís como encriptado.
+- **TLS** (encriptación en tránsito) listo por defecto usando el AWS TLS root certificate.
+- Autenticación con **IAM** (en lugar de usuario/password) o con usuario/password tradicional.
+- Control de acceso a nivel de red con **Security Groups**.
+- **No hay acceso SSH** a las instancias (excepto en RDS Custom).
+- Los **audit logs** se pueden habilitar y enviar a **CloudWatch Logs**; para retención larga se exportan a otros
+  servicios.
+
+### RDS Proxy
+
+Un proxy administrado que centraliza las conexiones a la DB. Beneficios:
+
+- **Connection pooling**: agrupa y reutiliza conexiones, reduciendo el overhead de CPU/RAM en la DB.
+- Reduce el tiempo de **failover** de RDS y Aurora hasta en un **66%** (evita los retrasos de propagación de DNS).
+- Es **serverless**, autoescalable y **Multi-AZ** (alta disponibilidad).
+- Refuerza la autenticación **IAM** y guarda las credenciales en **AWS Secrets Manager**.
+- **No es accesible desde internet**, solo desde dentro de la VPC / servicios de AWS.
+
+> 📝 **Caso de uso estrella**: muchas funciones **Lambda** conectándose a la misma DB. Lambda abre muchas conexiones
+> cortas y frecuentes; RDS Proxy las agrupa y evita saturar la base. Es pregunta frecuente en el examen.
+
 ---
 
 ## Progreso del Curso
