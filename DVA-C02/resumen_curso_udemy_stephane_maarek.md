@@ -728,6 +728,31 @@ caché simple, pura clave-valor, que escale horizontalmente con muchos nodos.
 > - **Multi-threaded**: Memcached usa **varios hilos/núcleos** en paralelo, por lo que aprovecha mejor una máquina con
 >   muchos cores. Redis es principalmente de un solo hilo.
 
+### Estrategias de Caché
+
+**Lazy Loading** (también llamada *Cache-Aside* o *Lazy Population*): se cachea al **leer**. La app lee primero el
+cache; si no hay datos (cache miss), lee de la DB, los trae y recién ahí los guarda en el cache.
+
+- **Pros**: solo se cachea lo que realmente se lee, no se llena el cache con datos que no se usan.
+- **Contras**: un cache miss implica tres pasos (cache → DB → cache), lo que agrega algo de latencia en esa request.
+  Además, los datos pueden quedar **obsoletos (stale)**, porque el cache no se actualiza cuando cambia la DB.
+
+**Write-Through**: se cachea al **escribir**. Cada vez que se escribe en la DB, también se escribe en el cache. Se usa
+cuando el dato no cambia muy seguido (por ejemplo, un post de red social).
+
+- **Pros**: los datos en cache siempre están frescos, no hay latencia extra en las lecturas.
+- **Contras**: agrega latencia en las escrituras, y puede **cachear datos que quizás nunca se lean** (desperdicia
+  memoria).
+
+**Cache Evictions y TTL**: un elemento sale del cache por tres motivos:
+
+- Se **elimina explícitamente** (por ejemplo, al borrar el item en la DB).
+- Es **evicted** (expulsado) porque la memoria está llena y es el menos usado recientemente.
+- Expira su **TTL (Time To Live)**: un tiempo de vida que se le asigna a cada elemento, tras el cual se invalida solo.
+
+> 📝 **Nota del examen**: Lazy Loading y Write-Through suelen **combinarse**, y el **TTL** es la forma más común de
+> mitigar los datos obsoletos del Lazy Loading. Si la pregunta habla de "datos stale en el cache", pensá en TTL.
+
 ---
 
 ## Progreso del Curso
