@@ -753,8 +753,113 @@ cuando el dato no cambia muy seguido (por ejemplo, un post de red social).
 > 📝 **Nota del examen**: Lazy Loading y Write-Through suelen **combinarse**, y el **TTL** es la forma más común de
 > mitigar los datos obsoletos del Lazy Loading. Si la pregunta habla de "datos stale en el cache", pensá en TTL.
 
+## Amazon Route 53
+
+> 🔗 **Documentación oficial**: [Amazon Route 53 Developer Guide](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html)
+
+Es el servicio **DNS administrado** de AWS. Permite administrar los registros DNS, **registrar nuevos dominios** y
+hacer **health checks** de los servicios. Es el **único servicio de AWS con un SLA de 100% de disponibilidad**.
+
+> 📝 **Nota**: el 100% aplica a responder las consultas DNS (data plane), no a la consola ni a la API de gestión.
+
+### Conceptos DNS básicos
+
+- **Domain Registrar**: empresa donde se registra un dominio (Route 53 lo es, pero también existen otras).
+- **DNS Records**: registros que definen a dónde apunta cada nombre (A, AAAA, CNAME, NS, etc.).
+- **Zone File**: archivo que contiene los DNS records de un dominio.
+- **Name Server**: servidor que resuelve las consultas DNS.
+- **TLD (Top Level Domain)**: la terminación del dominio, por ejemplo `.com` u `.org`.
+- **FQDN (Fully Qualified Domain Name)**: nombre completo, por ejemplo `api.www.example.com.`
+
+### Hosted Zones
+
+Una **hosted zone** es el contenedor de records que define cómo se rutea el tráfico de un dominio y sus subdominios.
+
+- **Pública**: responde consultas desde internet.
+- **Privada**: responde consultas solo dentro de una o más **VPC**.
+- Se cobra un costo mensual de $0.50 dolares por cada hosted zone.
+
+> 📝 **Registrar vs servicio DNS**: Route 53 hace las dos cosas, pero se puede registrar el dominio en otro proveedor y
+> usar Route 53 solo como DNS. Para eso se configuran, en el registrar, los **NS** que Route 53 asignó a la hosted zone.
+
+### Records
+
+Un record define cómo se rutea el tráfico a través de un dominio. Cada record tiene:
+
+- **Domain / subdomain name**: por ejemplo `example.com` o `api.example.com`.
+- **Record type**: por ejemplo `A` o `AAAA`.
+- **Value**: el dato que devuelve el record, que depende del tipo. En un `A` es una IPv4 (ej: `12.34.56.78`), en un
+  `AAAA` una IPv6 y en un `CNAME` otro hostname.
+- **Routing policy**: cómo responde Route 53 a las consultas (ver más abajo).
+- **TTL**: el tiempo que los resolvers DNS y los clientes **cachean** la respuesta.
+
+Tipos de record soportados: `A`, `AAAA`, `CNAME`, `NS`, `CAA`, `MX`, `NAPTR`, `PTR`, `SOA`, `TXT`, `SPF`, `SRV`.
+
+Los más importantes:
+
+| Tipo | Qué hace |
+| :--- | :--- |
+| **A** | Mapea un hostname a una **IPv4** |
+| **AAAA** | Mapea un hostname a una **IPv6** |
+| **CNAME** | Mapea un hostname a **otro hostname**. El destino debe terminar resolviendo a un `A` o `AAAA` |
+| **NS** | Lista los **name servers** autoritativos de la hosted zone (los que responden por ese dominio) |
+
+> 📝 **Nota**: un CNAME **no se puede crear en el dominio raíz** (zone apex). Por ejemplo, no se puede para
+> `example.com`, pero sí para `api.example.com`.
+
+### CNAME vs Alias
+
+El **Alias** es una extensión propia de Route 53 para apuntar un hostname a **recursos de AWS**.
+
+| Característica | CNAME | Alias |
+| :--- | :--- | :--- |
+| Dominio raíz (`example.com`) | No | **Sí** |
+| Subdominio (`api.example.com`) | Sí | Sí |
+| Destino | Cualquier hostname | Recursos de AWS |
+| Costo de las consultas | Se cobran | **Gratis** (hacia recursos de AWS) |
+| Health check | No | **Nativo** (Evaluate Target Health) |
+
+Destinos típicos de un Alias: **ELB**, **CloudFront**, **API Gateway**, **S3** (website), entre otros.
+
+> 📝 **Nota del examen**: un Alias **no puede apuntar al DNS name de una instancia EC2**. Para EC2 se usa un record
+> normal (A) más un health check. Y como un **load balancer tiene DNS name y no IP fija**, se lo expone con un
+> **Alias** (ver sección de ELB).
+
+### Routing Policies (resumen)
+
+La routing policy define **cómo responde Route 53** a una consulta DNS.
+
+| Policy | Qué hace | Cuándo usarla |
+| :--- | :--- | :--- |
+| **Simple** | Devuelve uno o varios valores; el cliente elige uno al azar | Un solo recurso. No admite health checks |
+| **Weighted** | Reparte el tráfico según **pesos** que se asignan a cada record | Pruebas A/B, canary deployments |
+| **Latency** | Envía al usuario a la **región con menor latencia** | Usuarios distribuidos en varias regiones |
+| **Failover** | **Activo-pasivo**: usa el primario y pasa al secundario si falla | Disaster recovery. Requiere health check |
+| **Geolocation** | Rutea según la **ubicación del usuario** (país, continente) | Localización, restricciones por región |
+| **Geoproximity** | Rutea según la ubicación de usuarios y recursos, con un **bias** ajustable | Mover tráfico entre regiones |
+| **IP-based** | Rutea según el **rango de IP (CIDR)** del cliente | Optimizar según la red de origen |
+| **Multi-value** | Devuelve hasta **8 records saludables** al azar | Balanceo simple con health checks |
+
+> 📝 **Nota del examen**: **Geolocation** decide por *dónde está el usuario*; **Latency** por *qué región responde
+> más rápido*. No son lo mismo.
+
+### Health Checks
+
+Permiten que Route 53 **monitoree la salud de los recursos** y deje de enviar tráfico a los que fallan. Se usan junto
+con las routing policies (sobre todo Failover) y con el Alias.
+
+Tipos de health check:
+
+- **Endpoint**: monitorea un endpoint (IP o dominio) por HTTP, HTTPS o TCP, cada 10 o 30 segundos, desde varias
+  regiones.
+- **Calculated**: combina el resultado de **varios health checks** en uno solo.
+- **CloudWatch Alarm**: se basa en el estado de una **alarma de CloudWatch**.
+
+> 📝 **Nota del examen**: los health checkers de Route 53 están **fuera de la VPC**, por lo que no pueden llegar a
+> recursos privados. Para monitorear un recurso privado se usa un health check basado en una **alarma de CloudWatch**.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 76** - AWS Fundamentals: ELB + ASG
+✅ **Completado hasta la lección 107** - Route 53
