@@ -858,8 +858,64 @@ Tipos de health check:
 > 📝 **Nota del examen**: los health checkers de Route 53 están **fuera de la VPC**, por lo que no pueden llegar a
 > recursos privados. Para monitorear un recurso privado se usa un health check basado en una **alarma de CloudWatch**.
 
+## Amazon VPC (Virtual Private Cloud)
+
+> 🔗 **Documentación oficial**: [Amazon VPC User Guide](https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html)
+
+Una **VPC** es una red virtual privada y aislada dentro de AWS, donde se despliegan los recursos (EC2, RDS, etc.). Sirve,
+por ejemplo, para aplicaciones internas de una empresa.
+
+- Es un recurso **regional**: pertenece a una sola región. Se pueden tener **varias VPC por región** (hay una cuota
+  ampliable), y si se trabaja en dos regiones, cada una necesita su propia VPC.
+- Cada región trae una **default VPC** ya configurada para empezar a usar.
+- Por defecto está aislada: solo tiene salida a internet si se le agrega un **Internet Gateway** y una ruta que lo use.
+
+### Subnets
+
+Las **subnets** son particiones dentro de una VPC.
+
+- Cada subnet vive en **una sola Availability Zone** (no se extiende entre zonas). Para alta disponibilidad se crea
+  una por AZ.
+- **Subnet pública**: tiene una ruta hacia el Internet Gateway. Para recursos que necesitan acceso a internet, como
+  un load balancer.
+- **Subnet privada**: sin ruta directa a internet. Para aplicaciones internas y bases de datos, con más seguridad.
+- **CIDR**: la VPC y cada subnet tienen un rango de IPs, por ejemplo `10.0.0.0/16`.
+- **Route tables**: definen a dónde va el tráfico de cada subnet. Es lo que distingue una subnet pública de una
+  privada.
+
+### Conectividad a Internet
+
+| Componente | Qué hace |
+| :--- | :--- |
+| **Internet Gateway (IGW)** | Se asocia a la VPC y permite que los recursos de las subnets públicas se conecten a internet (entrada y salida) |
+| **NAT Gateway** | Vive en una **subnet pública** y permite que los recursos de las subnets **privadas** inicien conexiones hacia internet, sin que internet pueda iniciar una hacia ellos |
+
+> 📝 **Caso típico**: una app en la subnet privada necesita un dato de la web (actualizaciones, una API externa). Sale
+> por el **NAT Gateway** de la subnet pública, que a su vez usa el Internet Gateway. Así la red privada nunca queda
+> expuesta a conexiones entrantes.
+
+### Seguridad: NACL y Security Groups
+
+La **NACL (Network ACL)** es un firewall que controla el tráfico que entra y sale de una **subnet**, y puede **permitir
+o denegar** IPs. Se usa en conjunto con los Security Groups para reforzar la seguridad.
+
+| Característica | Security Group | NACL |
+| :--- | :--- | :--- |
+| Nivel | Instancia (ENI) | Subnet |
+| Estado | Stateful | **Stateless** |
+| Tipo de reglas | Solo allow | Allow y deny |
+
+### Arquitectura típica de 3 capas
+
+1. **Capa web**: un **ELB** en subnets públicas, al que apunta **Route 53** (el DNS está delante, no cuenta como capa).
+2. **Capa de aplicación**: instancias **EC2** en una **subnet privada**, a las que solo puede acceder el load balancer
+   (el Security Group de las EC2 referencia al del load balancer).
+3. **Capa de datos**: **RDS** o **ElastiCache** en otra subnet privada.
+
+Otro stack común es **LAMP** (Linux, Apache, MySQL y PHP) sobre EC2.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 107** - Route 53
+✅ **Completado hasta la lección 113** - VPC
