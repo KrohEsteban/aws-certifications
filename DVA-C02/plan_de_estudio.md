@@ -1,3 +1,11 @@
+---
+title: Plan de estudio
+parent: DVA-C02
+nav_order: 1
+redirect_from:
+  - /DVA-C02/plan_de_estudio.html
+---
+
 # Plan de Estudio - AWS Certified Developer Associate (DVA-C02)
 
 ## Curso: Ultimate AWS Certified Developer Associate 2026 - Stéphane Maarek

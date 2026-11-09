@@ -1,18 +1,21 @@
 title: AWS Certifications
 description: Notas y recursos para las certificaciones de AWS
-url: https://krohesteban.github.io
+url: https://estebankroh.com
 baseurl: /aws-certifications
 lang: es
 
-remote_theme: just-the-docs/just-the-docs
+remote_theme: just-the-docs/just-the-docs@v0.12.0
 search_enabled: true
 color_scheme: dark
+permalink: pretty
 
 plugins:
   - jekyll-remote-theme
   - jekyll-optional-front-matter
   - jekyll-relative-links
   - jekyll-titles-from-headings
+  - jekyll-sitemap
+  - jekyll-redirect-from
 
 relative_links:
   enabled: true
@@ -20,8 +23,8 @@ relative_links:
 
 titles_from_headings:
   enabled: true
-  strip_title: true
-  collection: false
+  strip_title: false
+  collections: false
 
 defaults:
   - scope:
