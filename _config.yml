@@ -1,0 +1,37 @@
+title: AWS Certifications
+description: Notas y recursos para las certificaciones de AWS
+url: https://krohesteban.github.io
+baseurl: /aws-certifications
+lang: es
+
+remote_theme: just-the-docs/just-the-docs
+search_enabled: true
+
+plugins:
+  - jekyll-remote-theme
+  - jekyll-optional-front-matter
+  - jekyll-relative-links
+  - jekyll-titles-from-headings
+
+relative_links:
+  enabled: true
+  collections: false
+
+titles_from_headings:
+  enabled: true
+  strip_title: true
+  collection: false
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+
+exclude:
+  - Dockerfile
+  - docker-compose.yml
+  - cspell.json
+  - README.md
+  - node_modules
+  - vendor

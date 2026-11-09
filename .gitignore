@@ -14,6 +14,10 @@ Thumbs.db
 *.swp
 *.swo
 
+# Jekyll
+_site/
+.jekyll-cache/
+
 # Logs
 *.log
 npm-debug.log*
