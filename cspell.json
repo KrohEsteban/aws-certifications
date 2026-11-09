@@ -66,6 +66,10 @@
     "milisegundos",
     "IMDS",
     "inicialización",
-    "transicionar"
+    "transicionar",
+    "desencripta",
+    "desencriptar",
+    "DSSE",
+    "dsse"
   ]
 }

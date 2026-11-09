@@ -1124,8 +1124,58 @@ reaccionar solo cuando se crea una imagen `.jpg`.
 > 📝 **Nota del examen**: Transfer Acceleration mejora la **subida** desde lejos hacia un bucket. No sirve el contenido
 > desde servidores cercanos al usuario: para eso se usa **CloudFront** o se replica el bucket a otra región.
 
+### S3 Encryption
+
+**Server-side encryption (SSE)**: S3 encripta el objeto al guardarlo y lo desencripta al leerlo. Hay cuatro variantes,
+según quién maneja las keys:
+
+| Tipo | Keys | Valor del header `x-amz-server-side-encryption` | Notas |
+| :--- | :--- | :--- | :--- |
+| **SSE-S3** | Administradas por S3 (AES-256) | `AES256` | Es el **default** para todo objeto nuevo |
+| **SSE-KMS** | Guardadas en AWS KMS | `aws:kms` | Control de la key y auditoría con CloudTrail |
+| **DSSE-KMS** | Guardadas en AWS KMS | `aws:kms:dsse` | **Dos capas** de encriptación |
+| **SSE-C** | Las provee el cliente | (usa headers propios para la key) | Requiere **HTTPS** |
+
+- **SSE-S3**: desde el 5 de enero de 2023, todos los objetos nuevos se encriptan con SSE-S3 sin costo extra y sin
+  configurar nada. El header solo hace falta si se quiere indicar el tipo de forma explícita.
+- **SSE-KMS**: el usuario puede crear y controlar la key, y las operaciones quedan registradas en **CloudTrail**. La
+  contra es que cada operación usa la **API de KMS**, que tiene **costo** y **límites de requests por segundo**: con
+  mucho tráfico puede haber throttling. Los **S3 Bucket Keys** reducen esas llamadas a KMS (y su costo) hasta en un 99%.
+- **DSSE-KMS**: aplica **dos capas** de encriptación AES-256 con keys de KMS, pensado para cumplir normas de
+  compliance que piden doble capa. Cuesta más que SSE-KMS por las llamadas extra a KMS.
+- **SSE-C** (Customer-Provided Keys): la key la maneja el cliente **por fuera de AWS**. Se envía en cada request, por
+  HTTPS obligatoriamente; AWS la usa para encriptar o desencriptar y la **descarta**, nunca la almacena.
+
+> 📝 **Nota**: desde abril de 2026, SSE-C viene **deshabilitado por defecto** en los buckets nuevos de propósito
+> general, y también en los existentes de cuentas que no tienen objetos encriptados con SSE-C. Hay que habilitarlo
+> a propósito si se lo necesita.
+
+**Client-side encryption**: el cliente encripta el objeto **antes** de enviarlo a S3 y lo desencripta al descargarlo.
+AWS nunca ve el contenido sin encriptar ni maneja la key.
+
+#### Encriptación en tránsito (HTTPS)
+
+S3 acepta tanto **HTTP** como **HTTPS** (HTTPS cifra la conexión con TLS). Se recomienda usar siempre HTTPS, y para
+**forzarlo** se agrega una bucket policy que **deniega** los requests cuando `aws:SecureTransport` es `false`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyHTTP",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": ["arn:aws:s3:::mybucket", "arn:aws:s3:::mybucket/*"],
+      "Condition": { "Bool": { "aws:SecureTransport": "false" } }
+    }
+  ]
+}
+```
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 139** - S3
+✅ **Completado hasta la lección 140** - S3
