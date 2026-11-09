@@ -1029,6 +1029,9 @@ completa del objeto dentro del bucket. Por ejemplo, en `s3://my-bucket/my_folder
 - **Multi-part upload**: una sola operación de subida admite como máximo **5 GB**, por lo que para objetos más
   grandes es **obligatorio** usar multi-part upload. Se recomienda ya desde los 100 MB.
 - Un objeto también tiene **metadata** (lista de pares key/value), **tags** y un **version ID** (si hay versionado).
+- **No se puede buscar** objetos por tags ni por metadata: S3 no ofrece esa consulta. El patrón clásico es guardar esos
+  datos en una base como **DynamoDB** y consultarla ahí. También existe **S3 Metadata**, que expone la metadata como
+  tablas consultables con Athena (solo en buckets de propósito general).
 
 ### S3 Security
 
@@ -1080,8 +1083,49 @@ acceso o menor es la disponibilidad, más barato es almacenar.
 > es la disponibilidad, el costo y el tiempo de acceso. En **One Zone - IA** los datos viven en una sola AZ, por lo que
 > se pierden si esa AZ se destruye.
 
+### S3 Lifecycle Rules
+
+Para mover objetos entre clases de forma automática se crean reglas de lifecycle:
+
+- **Transition actions**: pasan el objeto a otra clase después de cierto tiempo (por ejemplo, 60 días después de
+  haberse creado).
+- **Expiration actions**: eliminan el objeto después de cierto tiempo.
+- Las reglas se pueden limitar a un **prefijo** (por ejemplo `my_folder1/*`) o a los objetos con ciertos **tags**.
+
+**S3 Analytics (Storage Class Analysis)**: analiza los patrones de acceso de los objetos **Standard** para recomendar
+cuándo pasarlos a **Standard-IA**, y así decidir qué lifecycle rules crear o mejorar. Genera un reporte diario. No da
+recomendaciones para One Zone-IA ni para Glacier Flexible Retrieval.
+
+### S3 Event Notifications
+
+S3 puede avisar cuando ocurre un evento en un bucket, por ejemplo `s3:ObjectCreated:*`, `s3:ObjectRemoved:*`,
+`s3:ObjectRestore:*` o `s3:Replication`. Se pueden configurar los que se necesiten, por ejemplo
+reaccionar solo cuando se crea una imagen `.jpg`.
+
+- **Destinos**: **SNS**, **SQS**, **Lambda** y **Amazon EventBridge**.
+- **Permisos**: al destino hay que adjuntarle una policy que le dé permiso a **S3** para publicar el evento (la access
+  policy del topic o de la cola, y la resource-based policy de la Lambda). No es un rol del bucket.
+- Cada configuración de notificación admite **un solo destino**, y un cambio tarda unos 5 minutos en aplicarse.
+- Con **EventBridge** el evento se puede reenviar a muchos más servicios destino. Es también la forma de llegar a una
+  cola **SQS FIFO**, que no se soporta directamente como destino.
+
+### S3 Performance
+
+- **Límites base**: S3 soporta al menos **3.500 requests por segundo** para PUT/COPY/POST/DELETE y **5.500** para
+  GET/HEAD, **por prefijo**. No hay límite de prefijos en un bucket, así que repartir los objetos en más prefijos
+  aumenta el throughput total.
+- **Multi-part upload**: para archivos grandes se divide la subida en partes que se suben **en paralelo**.
+- **S3 Transfer Acceleration**: acelera las transferencias de larga distancia hacia un bucket. El archivo se sube a un
+  **edge location** cercano (los de CloudFront) y desde ahí viaja por la red privada de AWS hasta el bucket, que sigue
+  estando en una sola región.
+- **Byte-range fetches**: se piden **rangos de bytes** de un objeto (header `Range`) para paralelizar las descargas, o
+  para traer solo una parte del archivo.
+
+> 📝 **Nota del examen**: Transfer Acceleration mejora la **subida** desde lejos hacia un bucket. No sirve el contenido
+> desde servidores cercanos al usuario: para eso se usa **CloudFront** o se replica el bucket a otra región.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 133** - S3
+✅ **Completado hasta la lección 139** - S3
