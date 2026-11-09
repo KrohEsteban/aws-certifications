@@ -76,30 +76,44 @@ body {
 }
 
 /* ---------- Tipografía ---------- */
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
+.main-content h1,
+.main-content h2,
+.main-content h3,
+.main-content h4,
+.main-content h5,
+.main-content h6 {
   color: var(--heading);
   font-weight: 700;
   letter-spacing: -0.015em;
   line-height: 1.25;
 }
 
-h1 {
+.main-content h1 {
   font-size: 2.4rem;
   margin-bottom: 1.5rem;
-  background: linear-gradient(90deg, var(--heading), var(--accent));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  -webkit-box-decoration-break: clone;
-  box-decoration-break: clone;
+  color: var(--heading);
 }
 
-h2 {
+@supports ((background-clip: text) or (-webkit-background-clip: text)) {
+  .main-content h1 {
+    background: linear-gradient(90deg, var(--heading), var(--accent));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+}
+
+@media print, (forced-colors: active) {
+  .main-content h1 {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+    color: var(--heading);
+  }
+}
+
+.main-content h2 {
   margin-top: 2.5rem;
   padding-bottom: 0.4rem;
   border-bottom: 1px solid var(--border);

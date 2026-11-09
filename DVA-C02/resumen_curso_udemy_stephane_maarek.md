@@ -1,3 +1,11 @@
+---
+title: Resumen del curso
+parent: DVA-C02
+nav_order: 2
+redirect_from:
+  - /DVA-C02/resumen_curso_udemy_stephane_maarek.html
+---
+
 # Ultimate AWS Certified Developer Associate 2026 DVA-C02 - Stéphane Maarek
 
 ## IAM & AWS CLI
