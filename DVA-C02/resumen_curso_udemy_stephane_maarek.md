@@ -914,8 +914,106 @@ o denegar** IPs. Se usa en conjunto con los Security Groups para reforzar la seg
 
 Otro stack común es **LAMP** (Linux, Apache, MySQL y PHP) sobre EC2.
 
+## Amazon S3 (Simple Storage Service)
+
+> 🔗 **Documentación oficial**: [Amazon S3 User Guide](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html)
+
+Es uno de los servicios fundamentales de AWS: almacenamiento de **objetos** con escalabilidad prácticamente ilimitada
+("infinite storage"). Usos típicos:
+
+- Backup y almacenamiento.
+- Disaster recovery.
+- Archivado de datos.
+- Hybrid cloud storage.
+- Hosting de aplicaciones y de archivos multimedia.
+- Big data.
+- Software delivery.
+- Sitios web estáticos.
+
+### Buckets
+
+Un **bucket** es el contenedor donde se almacenan los objetos (los archivos). Se crea **en una región**, pero por
+defecto su nombre es **global y único** entre todas las cuentas y todas las regiones (dentro de una partición).
+
+> 📝 **Account regional namespace**: desde 2026 se puede crear un bucket dentro de un namespace propio de la cuenta y
+> la región, con el formato `{prefijo}-{account-id}-{region}-an`. Así el mismo prefijo se puede reutilizar en cada
+> región (como buckets distintos) sin chocar con nombres de otras cuentas. No es un único bucket compartido entre
+> regiones.
+
+**Reglas para el nombre de un bucket**:
+
+- Entre 3 y 63 caracteres.
+- Solo minúsculas, números, puntos y guiones medios (no se permiten mayúsculas ni guiones bajos).
+- Debe empezar y terminar con una letra o un número (**sí puede empezar con un número**).
+- No puede tener dos puntos seguidos.
+- No puede tener formato de dirección IP.
+- No puede empezar con el prefijo `xn--`.
+- No puede terminar con el sufijo `-s3alias`.
+
+### Objects
+
+Los **objetos** son los archivos que se guardan en el bucket. Cada uno se identifica por una **key**, que es la ruta
+completa del objeto dentro del bucket. Por ejemplo, en `s3://my-bucket/my_folder1/myfile.txt` la key es
+`my_folder1/myfile.txt`.
+
+- **No existen los directorios**: aunque la consola los muestre, son solo keys con nombres largos separados por `/`.
+- **Tamaño máximo**: hasta **50 TB** por objeto.
+- **Multi-part upload**: una sola operación de subida admite como máximo **5 GB**, por lo que para objetos más
+  grandes es **obligatorio** usar multi-part upload. Se recomienda ya desde los 100 MB.
+- Un objeto también tiene **metadata** (lista de pares key/value), **tags** y un **version ID** (si hay versionado).
+
+### S3 Security
+
+El acceso a los buckets y objetos se controla con:
+
+- **Políticas IAM** asociadas a usuarios, grupos o roles.
+- **Bucket policies**: documentos JSON como las de IAM, pero adjuntos al propio bucket. Permiten o deniegan el acceso,
+  dar acceso público al bucket o a sus objetos, y dar acceso **cross-account**.
+- **ACLs** (Access Control Lists), a nivel de bucket o de objeto.
+- **Encriptación** de los objetos mediante una clave de encriptación.
+
+### S3 Replication (CRR y SRR)
+
+Copia los objetos de un bucket a otro de forma automática. Hay dos variantes:
+
+- **CRR (Cross-Region Replication)**: entre regiones distintas, por ejemplo para bajar la latencia de acceso o por
+  compliance.
+- **SRR (Same-Region Replication)**: dentro de la misma región, por ejemplo para replicar datos a un entorno de test.
+
+Qué hay que tener en cuenta:
+
+- Hay que habilitar el **versionado** y configurar bien los **permisos**.
+- La copia es **asincrónica**.
+- Se puede replicar **cross-account**.
+- Al habilitarla, solo se replican los objetos **nuevos**. Para los que ya existían se usa **S3 Batch Replication**.
+- Los **delete markers** se pueden replicar, pero las eliminaciones con **version ID** no se replican, para evitar
+  borrados maliciosos.
+- La replicación **no es transitiva**: si se replica del bucket 1 al 2 y del 2 al 3, los objetos no llegan del 1 al 3.
+
+### S3 Storage Classes
+
+| Clase | Disponibilidad | Duración mínima | Tiempo de acceso | Uso típico |
+| :--- | :--- | :--- | :--- | :--- |
+| **Standard - General Purpose** | 99,99% | - | Milisegundos | Acceso frecuente: big data, mobile, gaming |
+| **Standard - Infrequent Access (IA)** | 99,9% | 30 días | Milisegundos | Backups, disaster recovery |
+| **One Zone - IA** | 99,5% | 30 días | Milisegundos | Copias secundarias de datos on-premise o datos recreables |
+| **Glacier Instant Retrieval** | - | 90 días | Milisegundos | Datos que se acceden una vez por trimestre |
+| **Glacier Flexible Retrieval** | - | 90 días | Expedited 1-5 min, Standard 3-5 h, Bulk 5-12 h | Archivo |
+| **Glacier Deep Archive** | - | 180 días | Standard 12 h, Bulk 48 h | Archivo a largo plazo |
+| **Intelligent-Tiering** | - | - | Según el tier | Patrón de acceso impredecible |
+
+**Intelligent-Tiering** monitorea el uso y mueve cada objeto automáticamente entre tiers: Frequent Access, Infrequent
+Access, Archive Instant Access, Archive Access y Deep Archive Access.
+
+Los objetos se pueden mover entre clases de forma manual o con **S3 Lifecycle**. En general, cuanto más tarda el
+acceso o menor es la disponibilidad, más barato es almacenar.
+
+> 📝 **Nota del examen**: **todas** las clases tienen la misma durabilidad (99,999999999%, "11 nueves"). Lo que cambia
+> es la disponibilidad, el costo y el tiempo de acceso. En **One Zone - IA** los datos viven en una sola AZ, por lo que
+> se pierden si esa AZ se destruye.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 113** - VPC
+✅ **Completado hasta la lección 126** - S3
