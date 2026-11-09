@@ -52,6 +52,37 @@
 - En la consola hay un botón pegado al desplegable donde se eligen las regiones que te abre una terminal en el
   navegador llamado CloudShell y podemos ejecutar comandos de aws por ahí también
 
+**Perfiles (named profiles)**:
+
+- Con `aws configure --profile segundo-perfil` se agrega un perfil nuevo, para poder trabajar con **distintas cuentas**
+  (o usuarios) desde el CLI.
+- Cada perfil puede tener sus propias credenciales, región y formato de salida. Se guardan en `~/.aws/credentials` y
+  `~/.aws/config`.
+- Para usar un perfil se agrega `--profile segundo-perfil` al comando, o se define la variable de entorno
+  `AWS_PROFILE`. Si no se indica ninguno, se usa el perfil `default`.
+
+**MFA en el CLI (STS GetSessionToken)**:
+
+Cuando una política exige MFA, las access keys solas no alcanzan. Se usa la API **STS `GetSessionToken`**, indicando el
+**serial number** del dispositivo MFA (o su ARN, si es virtual) y el **código** que muestra en ese momento. A cambio
+devuelve **credenciales temporales**: access key, secret key y un **session token**.
+
+```bash
+aws sts get-session-token \
+  --serial-number arn:aws:iam::123456789012:mfa/mi-usuario \
+  --token-code 123456
+```
+
+- Con esos tres valores se crea un **perfil nuevo** y se lo usa en los comandos que requieren MFA. Hay que cargar
+  también el **session token**, no solo las dos keys.
+- Duran **12 horas** por defecto y se puede cambiar entre 15 minutos y 36 horas con `--duration-seconds`.
+
+**SDK**:
+
+- Además del CLI, se puede usar un **SDK** en distintos lenguajes para hacer llamadas a la API de AWS desde el código
+  de una aplicación (por ejemplo, para leer o escribir datos en un servicio).
+- El SDK usa los mismos archivos de configuración y perfiles que el CLI.
+
 ### Estructura de Políticas IAM
 
 Las políticas tienen la siguiente estructura JSON:
@@ -234,6 +265,43 @@ la app.
 - **SSH**: desde una terminal de Linux, macOS o Windows 10 en adelante.
 - **PuTTY**: aplicación para conectarse desde cualquier versión de Windows.
 - **EC2 Instance Connect**: conexión desde el navegador (web) a cualquier instancia, sin necesidad de clave local.
+
+### EC2 Instance Metadata (IMDS)
+
+El **Instance Metadata Service (IMDS)** permite que una instancia consulte **desde adentro** información sobre sí
+misma, sin necesidad de un IAM Role ni de credenciales de AWS CLI para hacer la consulta. Solo es accesible desde la
+propia instancia.
+
+- **URL**: `http://169.254.169.254/latest/meta-data/` (una IP link-local, solo alcanzable desde la instancia).
+- **Metadata**: información de la instancia (ID, tipo, AZ, IPs, etc.).
+- **User data**: el script de inicialización con el que se lanzó la instancia. Está en una ruta aparte:
+  `http://169.254.169.254/latest/user-data`.
+- **IAM Role**: se puede obtener el **nombre del rol** y sus **credenciales temporales** en
+  `iam/security-credentials/<nombre-del-rol>`, pero **no** la IAM Policy asociada. Así es como las aplicaciones de la
+  instancia reciben credenciales sin tenerlas embebidas.
+
+**IMDSv1 vs IMDSv2**:
+
+| Versión | Cómo se consulta | Seguridad |
+| :--- | :--- | :--- |
+| **IMDSv1** | Un `GET` directo a la URL | Cualquier proceso (o una vulnerabilidad SSRF) puede leerlo |
+| **IMDSv2** | Orientada a sesión: primero un `PUT` para obtener un **token**, y luego un `GET` enviando ese token en un header | **Más segura**: exige el token |
+
+```bash
+# IMDSv2: se pide un token (PUT) y se lo usa en el GET
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+
+curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/profile
+```
+
+- El token define la duración de la sesión: mínimo **1 segundo**, máximo **6 horas**.
+- En una instancia se puede permitir v1 y v2, o exigir **solo IMDSv2**. Amazon Linux 2023 trae IMDSv1 deshabilitado
+  por defecto, y los tipos de instancia nuevos usan solo IMDSv2.
+
+> 📝 **Nota del examen**: si una pregunta menciona la IP **169.254.169.254**, es el servicio de metadata. Y IMDSv2
+> es la opción más segura porque requiere un **token**.
 
 ## EC2 Instance Storage
 
@@ -1016,4 +1084,4 @@ acceso o menor es la disponibilidad, más barato es almacenar.
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 126** - S3
+✅ **Completado hasta la lección 133** - S3
