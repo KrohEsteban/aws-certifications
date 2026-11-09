@@ -6,6 +6,7 @@ lang: es
 
 remote_theme: just-the-docs/just-the-docs
 search_enabled: true
+color_scheme: dark
 
 plugins:
   - jekyll-remote-theme
