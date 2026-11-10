@@ -1182,8 +1182,42 @@ S3 acepta tanto **HTTP** como **HTTPS** (HTTPS cifra la conexión con TLS). Se r
 }
 ```
 
+### S3 CORS
+
+**CORS (Cross-Origin Resource Sharing)** es un mecanismo de seguridad del **navegador** que define cuándo una página
+cargada desde un origen puede pedir recursos a un origen distinto.
+
+Un **origin** se compone de **esquema (protocolo) + host (dominio) + puerto**. Por ejemplo, en
+`https://www.example.com` el puerto es 443 por ser https. Dos URLs son del mismo origen solo si coinciden las tres
+partes:
+
+- `https://example.com` y `https://www.example.com` son orígenes **distintos** (cambia el host).
+- `http://example.com` y `https://example.com` son orígenes **distintos** (cambian el esquema y el puerto).
+
+**Cómo funciona**: cuando una web carga recursos desde otro origen (por ejemplo, las imágenes están en un bucket de
+S3), el navegador hace una request **cross-origin**.
+
+1. El navegador agrega a la request el header `Origin` con el origen de la página.
+2. Para ciertas requests (por ejemplo con métodos como `PUT` o headers personalizados) primero envía una consulta de
+   **preflight** con el método `OPTIONS`, para preguntar qué se permite.
+3. El bucket responde con los headers CORS, como `Access-Control-Allow-Origin`. Si el origen no está permitido, el
+   navegador **bloquea** la respuesta.
+
+**Configuración en S3**: se define una **configuración CORS en el bucket de destino**, el que recibe las requests (el
+de las imágenes), no en el sitio que carga la página. Es un documento que indica los **orígenes permitidos** y los
+**métodos HTTP** que se admiten para cada uno. Se puede permitir un origen específico indicando la URL, o `*` para
+todos.
+
+> 📝 **Notas**:
+>
+> - CORS lo aplica el **navegador**: herramientas como `curl` no lo respetan.
+> - CORS **no otorga permisos**. Para que el objeto se pueda leer, igual hace falta que la bucket policy o IAM lo
+>   permitan. CORS solo le dice al navegador que una página de otro origen puede leer la respuesta.
+> - **Nota del examen**: si una pregunta describe un error del navegador al pedir un recurso de S3 desde otro dominio,
+>   la solución es configurar **CORS en el bucket de destino**.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 140** - S3
+✅ **Completado hasta la lección 145** - S3
