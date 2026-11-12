@@ -1051,6 +1051,57 @@ El acceso a los buckets y objetos se controla con:
 - **ACLs** (Access Control Lists), a nivel de bucket o de objeto.
 - **Encriptación** de los objetos mediante una clave de encriptación.
 
+#### MFA Delete
+
+Exige un segundo factor (**MFA**) para las operaciones más sensibles sobre un bucket.
+
+- Solo funciona en buckets con **versionado** habilitado.
+- Solo el **root** de la cuenta puede habilitarlo.
+- Con MFA Delete activo, hace falta MFA para **borrar una versión de forma permanente** o para **cambiar el estado del
+  versionado**.
+
+#### Server Access Logs
+
+Se pueden habilitar los **access logs** para guardar el detalle de cada request que recibe el bucket.
+
+- Los logs se entregan en **otro bucket**, que debe estar en la **misma región y en la misma cuenta**.
+- No conviene usar el mismo bucket como destino: genera un **loop infinito de logs** (cada log escrito genera un nuevo
+  log). Es posible, pero no se recomienda.
+- La entrega de logs no tiene costo, solo se paga el almacenamiento de los archivos.
+
+#### Presigned URLs
+
+Una **URL pre-firmada** da acceso temporal a un objeto privado: se genera con una **expiración** y se comparte con quien
+no tiene credenciales de AWS.
+
+- Sirve para **descargar** (GET) o **subir** (PUT) un objeto.
+- Expiración máxima: **12 horas** si se genera desde la consola, hasta **7 días** desde el CLI o un SDK.
+- Tiene los **permisos de quien la creó**: si esa persona no puede acceder al objeto, la URL tampoco.
+- Si se firmó con **credenciales temporales** (por ejemplo, un rol), vence cuando vence ese token, aunque la expiración
+  configurada sea mayor.
+
+#### S3 Access Points
+
+Un **access point** es un punto de entrada a un bucket con su **propia policy** y su **propio DNS name**. Permite
+definir quién accede a qué parte de un bucket compartido sin crecer una única bucket policy.
+
+- Por ejemplo, un access point cuya policy permite solo a un grupo definido acceder al prefijo `finance/` del bucket,
+  para que no sea accesible a cualquier usuario.
+- Trabaja **junto con la bucket policy**, y sus restricciones aplican solo a los requests hechos **a través de ese
+  access point**.
+- Se puede restringir para que acepte requests solo desde una **VPC**.
+
+**S3 Object Lambda Access Point**: pone una **Lambda entre la aplicación y S3 cuando se lee un objeto**, y transforma
+el dato antes de devolverlo. Por ejemplo, redactar información personal (PII), convertir el formato o filtrar campos,
+sin modificar el objeto original. Solo procesa requests GET, LIST y HEAD.
+
+> 📝 **Notas**:
+>
+> - Object Lambda **no envía** datos a otras aplicaciones al crearse un objeto. Para reaccionar a un evento de S3 se
+>   usan las **S3 Event Notifications**.
+> - Desde el 7 de noviembre de 2025, S3 Object Lambda está disponible **solo para clientes que ya lo usaban** y
+>   algunos partners de AWS. El curso puede seguir enseñándolo.
+
 ### S3 Replication (CRR y SRR)
 
 Copia los objetos de un bucket a otro de forma automática. Hay dos variantes:
