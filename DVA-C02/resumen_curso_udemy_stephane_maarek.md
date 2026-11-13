@@ -1267,8 +1267,52 @@ todos.
 > - **Nota del examen**: si una pregunta describe un error del navegador al pedir un recurso de S3 desde otro dominio,
 >   la solución es configurar **CORS en el bucket de destino**.
 
+## Amazon CloudFront
+
+> 🔗 **Documentación oficial**: [Amazon CloudFront Developer Guide](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Introduction.html)
+
+**CloudFront** es el servicio de **CDN (Content Delivery Network)** de AWS. Incluye **cache** y **seguridad**, y se
+destaca por su red global de **cientos de puntos de presencia** (edge locations): más de 700, más una capa de
+**Regional Edge Caches**. El contenido se sirve desde el punto más cercano al usuario, así que llega muy rápido a
+cualquier parte del mundo.
+
+- **Regional Edge Caches**: caches intermedios entre los edge locations y el origen, que retienen el contenido más
+  tiempo, incluso el que no es tan popular como para quedarse en un edge location.
+- **Seguridad**: los edge locations ofrecen mitigación automática de ataques DDoS de capas 3 y 4.
+
+### Orígenes
+
+CloudFront funciona como la **puerta de entrada** hacia distintos orígenes de datos:
+
+- **S3 buckets**: para servir (y también subir) archivos a través de CloudFront.
+- **VPC Origin**: para aplicaciones en **subnets privadas** de una VPC: un **ALB**, un **NLB** o instancias **EC2**
+  que no son accesibles desde internet y solo se alcanzan a través de CloudFront.
+- **Custom Origin (HTTP)**: cualquier aplicación accesible por HTTP.
+
+### Caching
+
+El cache ocurre en **cada edge location**.
+
+- **Cache key**: identificador único de cada objeto dentro del cache. Define si una request es un cache hit.
+- **Cache policy**: permite agregar más datos a la cache key (query strings, headers y cookies). Con las query strings
+  se puede elegir incluir **todas**, solo una **lista permitida (allowlist)**, **todas menos algunas excepciones**, o
+  **ninguna**.
+- **Origin request policy**: define qué datos se envían al origen **sin** incluirlos en la cache key. Todo lo que está
+  en la cache key también viaja al origen; esta policy permite sumar headers, cookies o query strings extra.
+- **Invalidación**: la **Invalidation API** quita objetos del cache antes de que venzan, de forma total o parcial. Se
+  indica una ruta, y con un `*` al final se invalidan varios archivos a la vez.
+
+### Cache Behaviors
+
+Un **cache behavior** define cómo trata CloudFront las URLs que coinciden con un **patrón de ruta (path pattern)**:
+cada patrón puede tener su propio origen y su propia configuración de cache. Siempre existe un **default behavior**,
+con patrón `*`, que se aplica a todo lo que no coincide con otro.
+
+> 📝 **Nota del examen**: **CloudFront** acelera la **entrega** de contenido desde puntos cercanos al usuario (cache en
+> el borde). **S3 Transfer Acceleration** acelera la **subida** hacia un bucket. No son lo mismo.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 145** - S3
+✅ **Completado hasta la lección 158** - CloudFront
