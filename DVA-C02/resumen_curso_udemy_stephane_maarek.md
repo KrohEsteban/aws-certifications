@@ -1289,6 +1289,15 @@ CloudFront funciona como la **puerta de entrada** hacia distintos orígenes de d
   que no son accesibles desde internet y solo se alcanzan a través de CloudFront.
 - **Custom Origin (HTTP)**: cualquier aplicación accesible por HTTP.
 
+Los orígenes pueden estar en redes **públicas** o **privadas** (VPC):
+
+- **Origen en una VPC**: el usuario solo puede llegar a la aplicación a través de CloudFront, lo que es más seguro y
+  casi no requiere configuración.
+- **Origen público**: hay que evitar que se pueda acceder directo, salteándose CloudFront. Dos formas de lograrlo:
+  - Un **security group** que permita solo el tráfico de CloudFront, usando la **managed prefix list de CloudFront**
+    (AWS mantiene ahí las IP de los edge locations, no hace falta cargarlas a mano).
+  - Un **header personalizado con un valor secreto** que CloudFront agrega a cada request, y que el origen verifica.
+
 ### Caching
 
 El cache ocurre en **cada edge location**.
@@ -1308,11 +1317,53 @@ Un **cache behavior** define cómo trata CloudFront las URLs que coinciden con u
 cada patrón puede tener su propio origen y su propia configuración de cache. Siempre existe un **default behavior**,
 con patrón `*`, que se aplica a todo lo que no coincide con otro.
 
+### Geo Restriction
+
+Permite **restringir el acceso por país** a toda la distribución, con una de dos listas:
+
+- **Allowlist**: solo pueden acceder los países indicados.
+- **Blocklist**: se bloquea a los países indicados.
+
+Los usuarios de un país no permitido reciben un error **403**. Sirve, por ejemplo, cuando no se puede ofrecer el
+contenido en algún país por derechos de copyright.
+
+### Signed URLs y Signed Cookies
+
+Sirven para dar acceso a contenido **solo a ciertos usuarios**, por ejemplo contenido premium para quienes pagaron.
+
+- **Signed URL**: da acceso a **una URL (archivo) específica**.
+- **Signed Cookie**: da acceso a **muchas URLs a la vez**.
+
+Para generarlas se define una **policy** que puede incluir la **fecha de expiración**, un **rango de IP** permitido y
+el **firmante de confianza (trusted signer)**, es decir, quién puede firmar las URLs.
+
+> 📝 **Trusted key group**: para definir al firmante, AWS recomienda crear un **key group** en CloudFront (con las
+> claves públicas con las que CloudFront verifica la firma) en lugar del método anterior, un **CloudFront key pair**
+> asociado a una cuenta de AWS.
+
+### Price Classes
+
+CloudFront cobra distinto según el edge location desde el que se descargan los datos. Para reducir costos se elige una
+**price class**, que limita los edge locations que se usan. No se pueden elegir edge locations sueltos, solo una de las
+tres clases:
+
+| Clase | Edge locations incluidos |
+| :--- | :--- |
+| **Price Class All** | Todos |
+| **Price Class 200** | La mayoría, sin los más caros (no incluye Sudamérica ni Australia/Nueva Zelanda) |
+| **Price Class 100** | Solo las regiones más baratas (principalmente Norteamérica y Europa) |
+
+> 📝 **Nota**: las price classes no bloquean usuarios. Quienes están en regiones excluidas se siguen sirviendo, pero
+> desde un edge location más lejano, con peor rendimiento. Para bloquear países se usa la **Geo Restriction**.
+>
 > 📝 **Nota del examen**: **CloudFront** acelera la **entrega** de contenido desde puntos cercanos al usuario (cache en
 > el borde). **S3 Transfer Acceleration** acelera la **subida** hacia un bucket. No son lo mismo.
+>
+> 📝 **Signed URL de CloudFront vs presigned URL de S3**: la de CloudFront se firma con un **key group** y sirve para
+> cualquier origen. La de S3 usa los **permisos de quien la creó** y solo sirve para objetos de S3.
 
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 158** - CloudFront
+✅ **Completado hasta la lección 165 de 448** - CloudFront
