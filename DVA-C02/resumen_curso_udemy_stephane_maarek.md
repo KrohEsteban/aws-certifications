@@ -1546,8 +1546,63 @@ Sirven para agregar recursos o personalizar el environment más allá de lo que 
 > 📝 **Nota del examen**: si una pregunta pide **cero downtime** al actualizar, la respuesta es **Immutable** (o
 > Blue/Green). Para **probar con una parte del tráfico**, **Traffic splitting**.
 
+## AWS CloudFormation
+
+> 🔗 **Documentación oficial**: [AWS CloudFormation User Guide](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/Welcome.html)
+
+**CloudFormation** es una forma de crear **infraestructura como código (IaC)**: se declara en un archivo todo lo que se
+quiere crear y CloudFormation lo crea, respetando el orden que imponen las **dependencias** entre los recursos.
+
+- Un **template** es el archivo que describe la infraestructura (el plano).
+- Un **stack** es el conjunto de recursos creados a partir de un template, que se administra como una sola unidad.
+- Los recursos de un stack quedan identificados con **tags**, así que se pueden crear y eliminar todos juntos al
+  borrar el stack.
+- El template se sube a **S3** y CloudFormation va creando los recursos definidos en él.
+
+### Secciones de un template
+
+| Sección | Para qué sirve |
+| :--- | :--- |
+| `AWSTemplateFormatVersion` | Versión del **formato** de template. Es **opcional** y el único valor válido es `2010-09-09` |
+| `Description` | Un comentario sobre lo que crea el template |
+| `Resources` | Define los recursos a crear. Es la **única sección obligatoria** |
+| `Parameters` | **Inputs dinámicos** que se pasan al crear el stack |
+| `Mappings` | **Variables estáticas** definidas en el propio template |
+| `Conditions` | Condiciones que controlan si se crea un recurso |
+| `Outputs` | Valores que **referencian lo que se creó** (por ejemplo, un ID o una URL) |
+
+Existen otras secciones opcionales (por ejemplo `Metadata` o `Transform`).
+
+> 📝 **Nota del examen**: de todas las secciones, solo **`Resources`** es obligatoria. `AWSTemplateFormatVersion` no es
+> la versión de tu template: indica la versión del formato.
+
+### Permisos: service role
+
+Se puede asignar un **service role** (rol de IAM) a un stack para que **CloudFormation use ese rol** al crear los
+recursos. Así, los usuarios no necesitan permisos propios sobre esos servicios: les alcanza con permisos de
+CloudFormation y con poder pasar el rol (`iam:PassRole`). Es útil, por ejemplo, para que la creación de recursos en
+producción solo se haga a través de CloudFormation.
+
+Si no hay un service role, CloudFormation usa las credenciales del usuario que lanzó la operación.
+
+### Stack Policies
+
+Una **stack policy** es un documento JSON que define **qué actualizaciones se permiten** sobre los recursos de un
+stack, por ejemplo para evitar que un stack modifique un servicio ya creado.
+
+- Al configurar una stack policy, **todos los recursos quedan protegidos por defecto**.
+- Para permitir actualizaciones se agregan statements `Allow`, y un `Deny` explícito sobre un recurso (por ejemplo, la
+  base de datos de producción) tiene prioridad.
+- Protege contra actualizaciones hechas **a través de CloudFormation**, no contra cambios hechos directamente sobre
+  el recurso fuera de CloudFormation.
+
+### Eliminar un stack con buckets de S3
+
+CloudFormation **no puede eliminar un bucket que tiene objetos**: primero hay que **vaciarlo**, o la eliminación del
+stack falla. Si no se puede vaciar, se puede **retener** el recurso al borrar el stack.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 179 de 448** - Elastic Beanstalk
+✅ **Completado hasta la lección 179 de 448** - CloudFormation
