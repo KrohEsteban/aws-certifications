@@ -1362,8 +1362,128 @@ tres clases:
 > 📝 **Signed URL de CloudFront vs presigned URL de S3**: la de CloudFront se firma con un **key group** y sirve para
 > cualquier origen. La de S3 usa los **permisos de quien la creó** y solo sirve para objetos de S3.
 
+## Amazon ECS (Elastic Container Service)
+
+> 🔗 **Documentación oficial**: [Amazon ECS Developer Guide](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/Welcome.html)
+
+**ECS** permite correr **contenedores Docker** en AWS. Cada contenedor (o grupo de contenedores) se ejecuta como una
+**ECS Task**, y los contenedores corren dentro de un **cluster**.
+
+### Task Definition
+
+La **task definition** es un archivo JSON que especifica cómo correr uno o más contenedores. Define:
+
+- **Image name**: la imagen de Docker a usar.
+- **Port binding**: el puerto del contenedor y el del host.
+- **Memory y CPU** requeridos.
+- **Variables de entorno**.
+- **Información de red (networking)**.
+- **IAM Role** de la task.
+- **Configuración de logging**, por ejemplo hacia CloudWatch.
+
+### Launch Types: EC2 y Fargate
+
+Hay dos formas de correr las tasks. El curso recomienda usar **Fargate**.
+
+| Característica | EC2 launch type | Fargate launch type |
+| :--- | :--- | :--- |
+| Infraestructura | Se levantan **instancias EC2** dentro del cluster | **Serverless**: no hay EC2 que administrar |
+| Quién gestiona las EC2 | **Nosotros** (parches, capacidad, escalado) | AWS |
+| Contenedores | Corren dentro de las EC2, con un **ECS Agent** que los gestiona | AWS levanta y gestiona los contenedores |
+| Permisos del agente | **EC2 Instance Profile** (lo usa el ECS Agent) | No hay instance profile |
+
+### IAM Roles en ECS
+
+Hay tres roles que no hay que confundir:
+
+- **EC2 Instance Profile** (container instance role): solo en **EC2 launch type**. Lo usa el **ECS Agent** para llamar
+  a la API de ECS, enviar logs a CloudWatch, descargar imágenes de ECR, etc.
+- **Task Role**: se define **en la task definition** y da permisos a **la aplicación que corre dentro del
+  contenedor** (por ejemplo, leer de S3 o escribir en DynamoDB). Funciona igual en EC2 y en Fargate. Conviene crear
+  uno distinto por cada servicio o task, con los permisos mínimos.
+- **Task Execution Role**: la usa **ECS (o el agente de Fargate)** para preparar y lanzar la task: descargar la imagen
+  desde ECR, enviar logs a CloudWatch y obtener secrets de Secrets Manager o Parameter Store.
+
+> 📝 **Nota del examen**: **Task Role** = permisos de **tu código**. **Task Execution Role** = permisos del
+> **servicio ECS** para arrancar la task. En Fargate no existe el instance profile.
+
+### Cómo se lanzan las tasks
+
+Además de lanzarlas a mano o como parte de un servicio, se pueden crear en respuesta a eventos externos. Por ejemplo,
+una regla de **EventBridge** que lance una task, o un escalado según la cantidad de mensajes acumulados en una cola
+**SQS**.
+
+### Integración con Load Balancers
+
+- **ALB (Application Load Balancer)**: es el recomendado para la mayoría de los casos. Soporta **dynamic host port
+  mapping**, que permite correr varias tasks del mismo servicio en una misma instancia, y routing por path.
+- **NLB (Network Load Balancer)**: se recomienda solo para aplicaciones con **alto throughput o alto rendimiento**.
+- **CLB (Classic Load Balancer)**: no se recomienda. No soporta dynamic port mapping y no es compatible con Fargate.
+
+### Data Volumes
+
+Para **persistir datos** se recomienda **EFS**, que funciona tanto con EC2 como con Fargate y permite que varias tasks
+compartan el mismo almacenamiento, aunque estén en distintas AZ.
+
+- ECS también se integra con **EBS** (volúmenes por task).
+- El almacenamiento propio del contenedor y los **bind mounts** son **efímeros**: los datos se pierden cuando la task
+  se detiene.
+- **S3** se puede usar para guardar datos, pero desde el código de la aplicación (con el SDK), no como un disco montado
+  en la task definition de la forma clásica.
+
+### ECS Auto Scaling
+
+Permite **sumar y restar tasks** automáticamente. Usa **Application Auto Scaling** y puede escalar según:
+
+- **ECSServiceAverageCPUUtilization**: uso promedio de CPU del servicio.
+- **ECSServiceAverageMemoryUtilization**: uso promedio de memoria (scale on RAM).
+- **ALBRequestCountPerTarget**: cantidad de requests por task, una métrica que viene del ALB.
+
+Tipos de política de escalado:
+
+- **Target Tracking**: mantiene una métrica cerca de un valor objetivo (puede ser una métrica de CloudWatch).
+- **Step Scaling**: se dispara con una **alarma de CloudWatch**, con escalones según cuánto se supere el umbral.
+- **Scheduled Scaling**: según un horario conocido.
+
+> 📝 **Ojo con el nivel de escalado**: el auto scaling de ECS actúa a **nivel de task** (contenedores), no de
+> instancias. En **Fargate** alcanza con eso, porque no hay EC2. En **EC2 launch type** hay que escalar también las
+> **instancias EC2** del cluster. Para hacerlo se usa un **Auto Scaling Group** o un **ECS Cluster Capacity Provider**,
+> que administra la capacidad por nosotros. Por eso se recomienda Fargate.
+
+### Actualizar un servicio de ECS
+
+Al actualizar un servicio (rolling update) se definen dos parámetros que controlan cuántas tasks se reemplazan a la vez:
+
+- **Minimum healthy percent**: mínimo de tasks sanas que deben seguir corriendo durante el update, como porcentaje de
+  la cantidad deseada.
+- **Maximum percent**: máximo de tasks (corriendo o iniciando) permitidas durante el update, como porcentaje de la
+  cantidad deseada.
+
+ECS termina y levanta tasks **dentro de ese rango** hasta completar la actualización de a poco. Por ejemplo, con mínimo
+50% y máximo 100% reemplaza la mitad de las tasks por vez. Con mínimo 100% y máximo 200% primero levanta las nuevas y
+después baja las viejas.
+
+## Amazon ECR (Elastic Container Registry)
+
+> 🔗 **Documentación oficial**: [Amazon ECR User Guide](https://docs.aws.amazon.com/AmazonECR/latest/userguide/what-is-ecr.html)
+
+**ECR** es un repositorio para **almacenar imágenes de contenedores**, de forma **privada o pública**. Está integrado
+con ECS y el acceso se controla con **IAM** (junto con las policies del repositorio). Algunas funciones:
+
+- **Escaneo de vulnerabilidades** de las imágenes.
+- **Image tags**, para identificar y versionar las imágenes.
+- **Image lifecycle policies**, que expiran las imágenes viejas o sin uso.
+- **Tag immutability**, para impedir que un tag existente se sobrescriba.
+
+## Amazon EKS (Elastic Kubernetes Service)
+
+> 🔗 **Documentación oficial**: [Amazon EKS User Guide](https://docs.aws.amazon.com/eks/latest/userguide/what-is-eks.html)
+
+**EKS** es el servicio administrado de **Kubernetes** en AWS. Cumple un rol parecido al de ECS (correr contenedores),
+pero usa Kubernetes en lugar del orquestador propio de AWS.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 165 de 448** - CloudFront
+✅ **Completado hasta la lección 179 de 448** - ECS
