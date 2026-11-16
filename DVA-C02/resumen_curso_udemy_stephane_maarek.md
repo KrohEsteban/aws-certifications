@@ -1480,10 +1480,74 @@ con ECS y el acceso se controla con **IAM** (junto con las policies del reposito
 > 🔗 **Documentación oficial**: [Amazon EKS User Guide](https://docs.aws.amazon.com/eks/latest/userguide/what-is-eks.html)
 
 **EKS** es el servicio administrado de **Kubernetes** en AWS. Cumple un rol parecido al de ECS (correr contenedores),
-pero usa Kubernetes en lugar del orquestador propio de AWS.
+pero usa Kubernetes en lugar del orquestador propio de AWS. Es especialmente útil para **migrar aplicaciones que ya
+corren en Kubernetes** (por ejemplo, en servidores on-premise).
+
+## AWS Elastic Beanstalk
+
+> 🔗 **Documentación oficial**: [AWS Elastic Beanstalk Developer Guide](https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/Welcome.html)
+
+**Elastic Beanstalk** es un servicio con una visión **centrada en el desarrollador** para manejar el deploy de
+aplicaciones en AWS. Permite definir en un solo lugar todos los servicios que usa la aplicación (EC2, ASG, ELB, RDS,
+etc.), sin perder el control sobre cómo se comunican entre sí ni sobre el código de cada uno.
+
+- **No tiene costo propio**: se paga solo por los recursos que usa (EC2, load balancer, etc.).
+- Una **aplicación** de Beanstalk es una colección de componentes: environments, versiones, configuraciones, etc.
+
+### Environments y tiers
+
+Un **environment** corre **una versión de la aplicación a la vez**. Se pueden crear varios, por ejemplo `dev`, `test`
+y `prod`. Cada environment tiene uno de dos tiers:
+
+- **Web Server Environment Tier**: una aplicación web, con un **ELB**, instancias **EC2** y un **ASG**.
+- **Worker Environment Tier**: el input llega desde una cola de **SQS** y se procesa con instancias **EC2** y un
+  **ASG**. No lleva load balancer.
+
+### Deployment Policies
+
+Opciones al actualizar una aplicación:
+
+| Política | Cómo funciona | Downtime y costo |
+| :--- | :--- | :--- |
+| **All at once** | Se actualiza todo a la vez: se frena la app que está corriendo y se levanta la nueva | La app **se cae unos minutos**. Es la más rápida y no tiene costo extra |
+| **Rolling** | Se actualiza por lotes: cuando las instancias de un lote están sanas, se sigue con el siguiente | La capacidad **baja** durante el deployment. Sin costo extra |
+| **Rolling with additional batch** | Como Rolling, pero primero se levanta un **lote extra** y después se van apagando las viejas | Mantiene la capacidad completa. Cuesta un poco más durante el deployment |
+| **Immutable** | Se crea la app en un **ASG temporal nuevo** y, cuando todo está sano, se pasan las instancias nuevas al ASG original | **Zero downtime** y rollback sencillo (basta terminar el ASG temporal). Cuesta más, pero solo mientras dura el deployment |
+| **Traffic splitting** | Hace un deployment immutable y envía **un porcentaje del tráfico** a las instancias nuevas durante un tiempo | Sirve para **canary testing**: probar mejoras con poco tráfico antes de pasar todo. El tráfico se maneja con un ALB |
+
+### Blue/Green
+
+**Blue/Green no es una política de deployment de Beanstalk**: se hace **a mano**. Se crea un **environment nuevo**
+(green), se prueba, y cuando está listo se usa **Swap environment URLs** para intercambiar las URL de los dos
+environments. El cambio de tráfico es de golpe, no gradual (para ir enviando tráfico de a poco se usa Traffic
+splitting).
+
+### EB CLI
+
+Existe el **Elastic Beanstalk CLI (EB CLI)**, con comandos propios que ayudan a automatizar los deploys.
+
+### Extensiones (`.ebextensions`)
+
+Sirven para agregar recursos o personalizar el environment más allá de lo que ofrecen los tiers.
+
+- Se ubican en una carpeta llamada **`.ebextensions/`** en la **raíz del proyecto**.
+- Cada archivo tiene extensión **`.config`** y su contenido va en **YAML** o **JSON** (AWS recomienda YAML).
+- Beanstalk se apoya en **CloudFormation**: lo que se define en `.ebextensions/` se agrega a la plantilla de
+  CloudFormation del environment, por lo que se pueden definir recursos de CloudFormation.
+
+### Clonar un environment y base de datos
+
+- Se puede **clonar** un environment de Beanstalk. En el caso de RDS, **no se copian los datos** de la base.
+- **Cambiar el load balancer**: se crea a mano un environment nuevo, sin clonar, con el nuevo load balancer, y luego
+  se hace el **swap** de URLs.
+- **RDS**: si la base se crea dentro de Beanstalk, queda atada al environment, y si este se termina **se pierde la
+  base**. Por eso se recomienda crear la DB **por fuera** y conectarla con un **connection string**.
+
+> 📝 **Nota del examen**: si una pregunta pide **cero downtime** al actualizar, la respuesta es **Immutable** (o
+> Blue/Green). Para **probar con una parte del tráfico**, **Traffic splitting**.
 
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 179 de 448** - ECS
+✅ **Completado hasta la lección 179 de 448** - Elastic Beanstalk
