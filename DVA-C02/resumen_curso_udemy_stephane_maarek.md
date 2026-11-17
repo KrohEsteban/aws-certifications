@@ -1666,8 +1666,109 @@ la DLQ, para analizarlo más adelante y depurar el problema sin que bloquee la c
 > mensajes**. Si la cola usa SSE con KMS, hace falta una **key administrada por el cliente** (no sirve la key
 > administrada por AWS) y darle permisos a S3 sobre esa key.
 
+## Amazon SNS (Simple Notification Service)
+
+> 🔗 **Documentación oficial**: [Amazon SNS Developer Guide](https://docs.aws.amazon.com/sns/latest/dg/welcome.html)
+
+**SNS** funciona con el modelo **publish/subscribe**: un **publisher** envía un mensaje a un **topic** de SNS y SNS lo
+entrega a **todos los suscriptores** del topic. A diferencia de SQS (donde el consumer busca los mensajes), SNS los
+**empuja (push)**. Los suscriptores pueden ser:
+
+- **SQS**
+- **Lambda**
+- **Amazon Data Firehose**
+- **Email**
+- **SMS** y notificaciones **mobile push**
+- **Endpoints HTTP y HTTPS**
+
+SNS también puede **recibir notificaciones de otros servicios de AWS** como origen de los mensajes.
+
+- Un topic estándar admite hasta **12,5 millones de suscripciones**.
+- SNS puede enviar mensajes **entre regiones** hacia colas SQS y funciones Lambda.
+- Por defecto un topic acepta mensajes de hasta **256 KiB**. Si se configura un límite mayor, solo admite
+  suscripciones de Firehose, SQS y Lambda.
+- SNS no es un almacén de mensajes: los entrega a los suscriptores y no los retiene para leerlos más tarde.
+
+### Patrón fan-out (SNS + SQS)
+
+Si un producer necesita enviar el mismo mensaje a **muchas colas SQS**, conviene poner un **SNS en el medio**: el
+producer publica **una sola vez** en el topic y SNS lo distribuye a cada cola suscrita. Así el producer no necesita
+conocer cada cola, y se pueden agregar o quitar colas sin tocar su código.
+
+## Amazon Kinesis
+
+> 🔗 **Documentación oficial**:
+> [Amazon Kinesis Data Streams](https://docs.aws.amazon.com/streams/latest/dev/introduction.html) ·
+> [Amazon Data Firehose](https://docs.aws.amazon.com/firehose/latest/dev/what-is-this-service.html) ·
+> [Managed Service for Apache Flink](https://docs.aws.amazon.com/managed-flink/latest/java/what-is.html)
+
+### Kinesis Data Streams
+
+Servicio que **recibe y transmite datos (streaming) en tiempo real**.
+
+- **Producers**: una aplicación que envía streaming de datos (con el SDK o la **Kinesis Producer Library, KPL**), o el
+  **Kinesis Agent**, que se instala en un servidor y envía métricas y logs al stream.
+- **Consumers**: aplicaciones (con la **Kinesis Client Library, KCL**), funciones **Lambda**, **Amazon Data Firehose** o
+  **Managed Service for Apache Flink**.
+- **Retención**: **24 horas por defecto, hasta 365 días**. Los registros son **inmutables** y los consumers pueden
+  **reprocesarlos (replay)** mientras no expiren.
+- **Tamaño de registro**: **1 MiB por defecto**. Admite hasta **10 MiB** si se habilita para el stream.
+- **Orden**: los registros con la misma **partition key** van al mismo **shard**, y el orden se garantiza **dentro de
+  cada shard**.
+
+**Capacity modes**:
+
+| Modo | Cómo funciona | Cobro |
+| :--- | :--- | :--- |
+| **Provisioned** | Se elige la cantidad de **shards**. Cada shard soporta **1 MB/s de entrada y 2 MB/s de salida**. Se escala **manualmente** | Por cada shard |
+| **On-demand** | No hay que administrar la capacidad: **escala automáticamente** según el tráfico (el curso menciona el pico de los últimos 30 días) | **Standard**: por stream por hora, más el volumen de datos. **Advantage**: sin cargo fijo por stream y con ingesta de menor costo |
+
+**Modos de consumo**: con **shared throughput** (standard) los consumers se reparten el throughput del shard. Con
+**enhanced fan-out**, cada consumer recibe hasta **2 MB/s por shard con throughput dedicado**.
+
+### Amazon Data Firehose
+
+Servicio para **enviar datos de streaming a destinos específicos**, sin administrar infraestructura.
+
+- **Producers**: Kinesis Agent, el SDK, aplicaciones, Kinesis Data Streams, CloudWatch y AWS IoT.
+- Los datos se pueden **transformar en el camino** (por ejemplo, con una función Lambda).
+- Los registros con error se pueden guardar en un bucket de **S3**.
+- **Destinos**: **S3**, **Redshift** (primero entrega a S3 y luego hace un `COPY`), **OpenSearch**, **partners de terceros**
+  (como Datadog, MongoDB o Splunk) y **endpoints HTTP personalizados**.
+- Es **near real-time**: acumula los datos en un **buffer** (por tamaño o por tiempo) antes de entregarlos.
+
+### Kinesis Data Streams vs Amazon Data Firehose
+
+| Característica | Kinesis Data Streams | Amazon Data Firehose |
+| :--- | :--- | :--- |
+| Qué hace | Streaming de datos, con producers y consumers propios | Carga datos en destinos (S3, Redshift, OpenSearch, terceros, HTTP) |
+| Latencia | Tiempo real | **Near real-time** |
+| Capacidad | Provisioned u on-demand | **Fully managed**, escala automáticamente |
+| Almacenamiento | Hasta **365 días** | **No almacena** datos |
+| Replay | **Sí** | **No** |
+
+### Managed Service for Apache Flink
+
+**Apache Flink** es un framework para procesar streams de datos, que se programa en **Java, Scala, Python o SQL**. El
+servicio (antes llamado Kinesis Data Analytics) administra el **auto scaling**, el **cómputo en paralelo** y los
+recursos. Respalda el estado de la aplicación con **checkpoints y snapshots**.
+
+> 📝 **Nota del examen**: **Flink no lee datos desde Firehose**. Firehose se usa solo como **destino (sink)**: Flink
+> puede escribir su salida en Firehose, pero no tomarlo como origen de datos.
+
+## SQS vs SNS vs Kinesis
+
+| Característica | SQS | SNS | Kinesis Data Streams |
+| :--- | :--- | :--- | :--- |
+| Modelo | **Pull**: el consumer pide los mensajes | **Push**: envía a los suscriptores | Los consumers leen del stream |
+| Datos | Se **borran** al ser consumidos | **No persisten** | Se **retienen** hasta 365 días y se pueden reprocesar (**replay**) |
+| Consumers | Varios workers | Hasta 12,5 millones de suscripciones por topic | Shared o **enhanced fan-out** |
+| Capacidad | No hay que provisionar throughput | No hay que provisionar throughput | **Provisioned** u **on-demand** |
+| Orden | Con **FIFO** | Se integra con SQS FIFO | Por **shard** |
+| Otros | Puede configurar un **delay** de entrega | Se integra con SQS (fan-out) | Orientado a **big data en tiempo real** |
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 179 de 448** - SQS
+✅ **Completado hasta la lección 231 de 448** - Kinesis
