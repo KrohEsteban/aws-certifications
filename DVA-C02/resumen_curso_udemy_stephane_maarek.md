@@ -2003,8 +2003,452 @@ Permiten enviar el resultado de las invocaciones **asíncronas** a un destino, s
 Lambda permite definir **variables de entorno** como pares **key/value**. Se **encriptan siempre en reposo** con KMS:
 por defecto con una key administrada por AWS, y también se puede usar una key propia.
 
+### Monitoreo y X-Ray
+
+- Lambda publica **métricas en CloudWatch** sin costo adicional. Por ejemplo, `Invocations` (veces que se ejecutó el
+  código, sin contar las invocaciones rechazadas por throttling) y `Errors` (excepciones del código y errores del
+  runtime, como los timeouts). La tasa de error se calcula como `Errors / Invocations`.
+- Los **logs** de la función van a **CloudWatch Logs**: la execution role de la función necesita permisos para
+  escribirlos.
+- **CloudWatch Lambda Insights** agrega métricas a nivel de sistema: CPU, memoria, disco y red.
+- **X-Ray**: se habilita el **tracing activo** en la configuración de la función y Lambda crea los segmentos de traza
+  automáticamente. Hay dos modos: **Active** y **PassThrough** (solo propaga el contexto de trazado a los servicios
+  siguientes, sin crear segmentos). La función necesita permisos de IAM para enviar las trazas. No hace falta instalar
+  el daemon (ver la sección de X-Ray).
+
+### Lambda@Edge y CloudFront Functions
+
+Las dos permiten **ejecutar código en respuesta a eventos de CloudFront**, para personalizar requests y respuestas
+cerca del usuario.
+
+| Característica | CloudFront Functions | Lambda@Edge |
+| :--- | :--- | :--- |
+| Runtime | JavaScript | Node.js o Python |
+| Eventos de CloudFront | Solo los de **viewer** (viewer request y viewer response) | Los **cuatro**: viewer request, viewer response, origin request y origin response |
+| Rendimiento | Arranque en **menos de un milisegundo**, escala a millones de requests por segundo | Funciones de Lambda completas, con más capacidad y más latencia |
+| Despliegue | Feature nativa de CloudFront: se crea, prueba y despliega dentro de CloudFront | Se publica en **una sola región** y CloudFront la replica a los edge locations |
+| Uso típico | Cambios livianos: reescribir URLs, manipular headers, validaciones simples | Lógica más pesada o que necesita las capacidades completas de Lambda |
+
+- **Viewer request**: cuando CloudFront recibe el request del usuario, antes de consultar el cache.
+- **Origin request**: solo en un **cache miss**, justo antes de enviar el request al origen.
+- **Origin response**: cuando el origen responde, antes de guardar el objeto en el cache.
+- **Viewer response**: antes de enviar la respuesta al usuario.
+- Cada **cache behavior** puede tener hasta **cuatro triggers** de Lambda@Edge.
+
+### Lambda en una VPC
+
+- Por defecto, la función corre en una **VPC administrada por Lambda**, con acceso a internet pero **sin acceso a los
+  recursos privados** de tu VPC (RDS, ElastiCache, instancias EC2 internas).
+- Para llegar a esos recursos se **asocia la función a tu VPC**, indicando **subnets privadas** y **security groups**.
+- Una vez asociada, la función **pierde el acceso a internet**, salvo que haya una ruta: un **NAT Gateway** en una
+  subnet pública, con la route table de la subnet privada apuntando a él. Para llegar a servicios de AWS sin pasar por
+  internet se pueden usar **VPC endpoints**.
+- Si muchas funciones Lambda se conectan a una base de datos relacional, conviene **RDS Proxy** (ver la sección de
+  RDS).
+
+### Rendimiento de la función
+
+- **Memoria**: de **128 MB a 10.240 MB**, en incrementos de 1 MB. No se configura la CPU directamente: la CPU
+  **escala en proporción a la memoria**, y a **1.769 MB** la función tiene el equivalente a **un vCPU**.
+- **Timeout**: **3 segundos por defecto**, hasta un máximo de **900 segundos**.
+- **Almacenamiento efímero (`/tmp`)**: de **512 MB a 10.240 MB**, encriptado en reposo. Se **comparte entre las
+  invocaciones** que atiende el mismo execution environment, así que sirve para cachear archivos.
+- **Cold start**: cuando Lambda crea un nuevo execution environment, descarga el código, inicializa el runtime y ejecuta
+  el código de inicialización antes de atender el request.
+- **Código de inicialización**: lo que se define **fuera del handler** (clientes del SDK, conexiones) se ejecuta una vez
+  por execution environment y se **reutiliza** en las invocaciones siguientes.
+- Como se paga por **duración y memoria**, subir la memoria puede acortar el tiempo de ejecución y no encarecer la
+  función. Conviene medir distintos tamaños.
+
+### Lambda Layers
+
+Una **layer** es un paquete con código o dependencias que se **comparte entre funciones**.
+
+- Una función admite hasta **5 layers**.
+- El tamaño total **descomprimido** de la función más todas sus layers no puede superar **250 MB**.
+- Las layers se extraen en el directorio **`/opt`** del execution environment.
+- Sirven para **librerías compartidas**, dependencias pesadas y **custom runtimes**.
+- Para actualizar una librería se publica una **nueva versión de la layer** y se actualiza la referencia en las
+  funciones.
+
+### Montar un file system (EFS)
+
+Una función puede **montar un file system de Amazon EFS** para compartir datos entre invocaciones, leer archivos de
+referencia grandes o escribir resultados en un almacenamiento persistente.
+
+- La función tiene que estar **asociada a una VPC**, porque los mount targets de EFS son recursos de la VPC.
+- Se necesita un **mount target de EFS en cada AZ** a la que se conecta la función. Para mayor resiliencia conviene usar
+  **al menos dos AZ**.
+- La función accede a través de un **EFS access point**, y su execution role necesita el permiso
+  `elasticfilesystem:ClientMount` (y `elasticfilesystem:ClientWrite` para escribir).
+- No hay cargo adicional por usar file systems desde una función dentro de la misma VPC.
+
+> 📝 **Novedad**: la documentación actual también incluye una opción de montaje con **Amazon S3 Files**.
+
+### Concurrency
+
+La **concurrencia** es la cantidad de ejecuciones de la función que ocurren a la vez.
+
+- Por defecto, cada cuenta tiene un límite de **1.000 ejecuciones concurrentes por región**, compartido por todas las
+  funciones. Se puede pedir un aumento.
+- **Reserved concurrency**: se **reserva** una cantidad de concurrencia para una función. Le **garantiza** esa capacidad
+  y a la vez le pone un **tope**. AWS exige dejar al menos 100 sin reservar para el resto de las funciones.
+- **Provisioned concurrency**: Lambda mantiene **execution environments ya inicializados**, listos para responder. Evita
+  los **cold starts** y se cobra aparte.
+- **Throttling**: si se supera el límite, las invocaciones **síncronas** reciben un error **429
+  (`TooManyRequestsException`)**. Las **asíncronas** se reintentan, y el evento se retiene hasta 6 horas.
+- Lambda puede crear **1.000 execution environments cada 10 segundos** para absorber un pico.
+
+### Dependencias externas
+
+Si la función usa librerías que no vienen incluidas en el runtime, hay que **incluirlas en el deployment package** (un
+`.zip`) junto con el código. Por ejemplo, la carpeta `node_modules` en Node.js o los paquetes instalados en un
+directorio local en Python.
+
+- Un `.zip` se puede subir **directo hasta 50 MB**. Si es más grande, se sube a **S3** y se referencia desde ahí.
+- El tamaño **descomprimido** (código más layers) no puede superar **250 MB**.
+- Alternativas cuando el paquete es muy grande: **layers** o **container images** (hasta 10 GB).
+
+### Lambda y CloudFormation
+
+- **Código inline**: en un template de CloudFormation, el código se puede escribir **directamente en la propiedad
+  `ZipFile`**, pero solo para funciones de **Node.js y Python**.
+- **Código en S3**: para el resto, el deployment package se referencia con `S3Bucket`, `S3Key` y, opcionalmente,
+  `S3ObjectVersion`.
+- Si se sube código nuevo a S3 con **la misma key**, CloudFormation **no detecta el cambio**, porque el template no
+  cambió. Hay que modificar `S3Key` o `S3ObjectVersion` para que actualice la función.
+- Al actualizar una función, CloudFormation llama primero a `UpdateFunctionConfiguration` y después a
+  `UpdateFunctionCode`. Entre esas dos llamadas puede haber invocaciones con errores.
+
+### Container Images
+
+Una función Lambda también se puede empaquetar como **imagen de contenedor**, hasta **10 GB**.
+
+- La imagen se guarda en **Amazon ECR**, en la **misma región** que la función (puede ser de otra cuenta).
+- Hay tres puntos de partida: una **imagen base de AWS** para un lenguaje, una **imagen base OS-only** (Amazon Linux más
+  el runtime interface emulator, típica para Go, Rust o versiones de lenguaje sin imagen base) o una **imagen propia**.
+- Cualquier imagen debe **implementar la Lambda Runtime API**: las imágenes de AWS ya incluyen el **runtime interface
+  client**, y en una imagen propia hay que agregarlo.
+- Se puede probar localmente con el **runtime interface emulator**.
+
+### Versions y Aliases
+
+- **`$LATEST`** es la versión editable de la función.
+- Al **publicar** una versión se crea una **versión inmutable**: una foto del código y la configuración en ese momento.
+- Un **alias** es un **puntero con nombre** a una versión (por ejemplo `prod` o `dev`) y se puede **reasignar** a otra
+  versión. Los triggers conviene apuntarlos al **ARN del alias**, así no hay que tocarlos al desplegar una versión
+  nueva.
+- Un alias puede repartir el tráfico entre **dos versiones con pesos**: es un **weighted alias**, base de los
+  **canary deployments**. Permite probar una versión nueva con poco tráfico y **volver atrás rápido** si falla.
+
+### Lambda y CodeDeploy
+
+**CodeDeploy** automatiza el cambio gradual de tráfico entre dos versiones de una función, usando un alias. SAM lo trae
+integrado.
+
+- **Canary**: se envía un porcentaje pequeño del tráfico a la versión nueva y, pasado un tiempo, el resto. Por ejemplo,
+  `Canary10Percent5Minutes`: 10% primero y el 90% restante cinco minutos después.
+- **Linear**: el tráfico se mueve de a incrementos iguales. Por ejemplo, `Linear10PercentEvery1Minute`.
+- **All at once**: todo el tráfico pasa de inmediato a la versión nueva.
+- **Hooks**: funciones que **validan** el deployment, antes (`BeforeAllowTraffic`) y después (`AfterAllowTraffic`) de
+  mover el tráfico.
+- Si un hook falla o se dispara una **alarma de CloudWatch**, CodeDeploy hace **rollback** automático.
+
+### Function URL
+
+Una **function URL** es un **endpoint HTTPS dedicado** para invocar la función **sin pasar por API Gateway**. Tiene el
+formato `https://<url-id>.lambda-url.<región>.on.aws` y no tiene costo adicional.
+
+- **Auth type `AWS_IAM`**: solo pueden invocarla usuarios o roles autenticados, con requests firmados (SigV4).
+- **Auth type `NONE`**: endpoint **público**, que se puede invocar con un navegador o `curl`. La **resource-based
+  policy** de la función siempre se aplica y tiene que otorgar acceso público para que reciba requests.
+- Soporta **configuración de CORS**.
+
+> 📝 **Cuándo usarla**: es la forma más simple de exponer una función por HTTPS. Si hacen falta funciones propias de
+> API Gateway (API keys, usage plans, caché), se usa API Gateway.
+
+### Límites (Limits)
+
+| Recurso | Límite |
+| :--- | :--- |
+| Memoria | 128 MB a 10.240 MB |
+| Timeout | 900 segundos (15 minutos) |
+| Almacenamiento efímero (`/tmp`) | 512 MB a 10.240 MB |
+| Concurrencia por región | 1.000 por defecto (se puede aumentar) |
+| Payload de invocación síncrona | 6 MB (request y respuesta) |
+| Payload de invocación asíncrona | 1 MB |
+| Deployment package (`.zip`) | 50 MB subido directo, 250 MB descomprimido (incluye layers) |
+| Container image | 10 GB |
+| Layers por función | 5 |
+| Variables de entorno | 4 KB en total |
+
+> 📝 **Nota**: el límite de 15 minutos aplica a las funciones estándar. Algunos modelos nuevos (como Lambda Managed
+> Instances) permiten más tiempo en ciertos tipos de invocación.
+
+### Buenas prácticas
+
+- **Inicializar** clientes del SDK y conexiones a bases de datos **fuera del handler**, y **cachear archivos estáticos
+  en `/tmp`**: las invocaciones siguientes en el mismo execution environment los reutilizan y se reduce el tiempo de
+  ejecución.
+- Usar **variables de entorno** para pasar parámetros operativos, en lugar de escribirlos en el código.
+- **Minimizar el tamaño del deployment package**, para acortar los cold starts.
+- **Evitar el código recursivo**, que puede disparar invocaciones en cadena sin control.
+- Conectar muchas funciones a una base relacional mediante **RDS Proxy**.
+
+## Amazon DynamoDB
+
+> 🔗 **Documentación oficial**: [Amazon DynamoDB Developer Guide](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Introduction.html)
+
+**DynamoDB** es una base de datos **NoSQL administrada, serverless y de baja latencia**. Escala a millones de requests
+por segundo y no hay servidores que administrar. Es una de las bases más importantes del examen.
+
+### Conceptos básicos
+
+- Una **tabla** contiene **items** (las filas) y cada item tiene **atributos** (las columnas). Salvo la primary key, no
+  hay un esquema fijo: cada item puede tener atributos distintos.
+- **Tamaño máximo de un item: 400 KB**, contando nombres y valores de los atributos.
+- **Primary key** (se define al crear la tabla):
+  - **Solo partition key**: tiene que ser **única** para cada item.
+  - **Partition key + sort key** (clave compuesta): la combinación debe ser única, y los items con la misma partition
+    key se guardan juntos, ordenados por la sort key.
+- Conviene elegir una partition key con **alta cardinalidad** (muchos valores distintos) para repartir bien la carga.
+- **Tipos de datos**: escalares (`String`, `Number`, `Binary`, `Boolean`, `Null`), de documento (`List` y `Map`) y sets
+  (`String Set`, `Number Set`, `Binary Set`).
+- **Table classes**: **Standard** (por defecto) y **Standard-Infrequent Access**, más barata para almacenar datos que
+  se acceden poco.
+
+### Capacity modes
+
+| Modo | Cómo funciona | Cuándo conviene |
+| :--- | :--- | :--- |
+| **Provisioned** | Se define la cantidad de **RCU y WCU** por segundo y se paga por la capacidad reservada. Se puede combinar con **auto scaling** | Tráfico estable y predecible |
+| **On-demand** | No hay que planificar capacidad: DynamoDB **escala solo** y se paga **por request** (más caro por unidad) | Tráfico impredecible, tablas nuevas o con picos |
+
+- Se puede **cambiar de modo**, con un límite de una vez cada 24 horas. El cambio puede tardar unos minutos.
+- En provisioned, si se supera la capacidad hay **throttling**.
+
+### WCU y RCU
+
+- **WCU (Write Capacity Unit)**: una escritura por segundo de un item de hasta **1 KB**.
+- **RCU (Read Capacity Unit)**: una lectura **strongly consistent** por segundo de un item de hasta **4 KB**, o **dos**
+  lecturas **eventually consistent**.
+- Un **transactional read** consume **2 RCU** por cada 4 KB, y una **transactional write** consume **2 WCU** por cada
+  1 KB.
+- El tamaño del item se **redondea hacia arriba** al múltiplo de 1 KB (escrituras) o de 4 KB (lecturas).
+
+| Tipo de lectura | RCU por cada 4 KB |
+| :--- | :--- |
+| Eventually consistent | 0,5 |
+| Strongly consistent | 1 |
+| Transactional | 2 |
+
+**Ejemplos de cálculo**:
+
+- **10 escrituras por segundo de items de 2 KB**: cada item usa 2 WCU, así que se necesitan **20 WCU**.
+- **16 lecturas strongly consistent por segundo de items de 12 KB**: cada item usa 3 RCU, así que se necesitan **48
+  RCU**. Con eventually consistent serían 24 RCU, y con transactional, 96 RCU.
+- **Un item de 6 KB** se redondea a 8 KB: una lectura strongly consistent usa **2 RCU**.
+
+> 📝 **Nota del examen**: por defecto, `GetItem`, `Query` y `Scan` hacen lecturas **eventually consistent**. Para una
+> lectura strongly consistent se manda el parámetro **`ConsistentRead = true`**, que consume el doble de RCU.
+
+### Throttling y particiones
+
+- Los datos se reparten en **particiones** según la partition key. Cada partición soporta como máximo **3.000 RCU y
+  1.000 WCU por segundo**, sin importar la capacidad total de la tabla.
+- Una **hot partition** (o hot key) ocurre cuando una partition key recibe mucho más tráfico que las demás: genera
+  throttling aunque la tabla tenga capacidad sobrante.
+- El error de throttling es **`ProvisionedThroughputExceededException`**. Las causas típicas son una hot key, una
+  lectura muy grande o capacidad insuficiente.
+- **Soluciones**:
+  - **Exponential backoff**: reintentar con esperas crecientes. Los SDK de AWS ya lo implementan por defecto.
+  - **Elegir mejor la partition key** (alta cardinalidad) y **distribuir los requests**.
+  - **Write sharding**: agregar un **sufijo aleatorio** a la partition key (por ejemplo `POST#123#1` a `POST#123#200`)
+    para repartir las escrituras de una key muy popular en varias particiones.
+  - **DAX** para aliviar lecturas repetidas sobre las mismas keys.
+- DynamoDB tiene **burst capacity** y **adaptive capacity**, que absorben picos y redistribuyen capacidad hacia las
+  particiones calientes, pero no reemplazan un buen diseño de claves.
+
+### Operaciones básicas
+
+**Escritura**:
+
+- **`PutItem`**: crea un item o **reemplaza uno existente** completo.
+- **`UpdateItem`**: modifica **atributos puntuales** de un item (o lo crea si no existe). Permite también **atomic
+  counters** (incrementos atómicos).
+- **`DeleteItem`**: borra un item. **`DeleteTable`** borra toda la tabla.
+- Todas admiten **conditional writes** (ver más abajo).
+
+**Lectura**:
+
+- **`GetItem`**: lee un item por su primary key. Con **`ProjectionExpression`** se piden solo ciertos atributos.
+- **`Query`**: devuelve los items de **una partition key**, opcionalmente filtrados por una condición sobre la sort key
+  (`KeyConditionExpression`). Es **eficiente** y puede consultar también un índice.
+- **`Scan`**: **lee toda la tabla** (o un índice) y recién después filtra. Es **ineficiente y caro**, porque consume
+  RCU por todos los items leídos, aunque el filtro los descarte. Para acelerarlo se usa un **parallel scan**.
+- **`FilterExpression`** (en `Query` y `Scan`) se aplica **después de leer los datos**: **no reduce el consumo de RCU**.
+- Cada llamada devuelve hasta **1 MB** de datos. Si hay más, la respuesta incluye **`LastEvaluatedKey`**, que se manda
+  como **`ExclusiveStartKey`** en la llamada siguiente (paginación). El parámetro **`Limit`** acota la cantidad de
+  items.
+
+**Operaciones en lote (batch)**:
+
+- **`BatchGetItem`**: hasta **100 items** (16 MB) de una o más tablas.
+- **`BatchWriteItem`**: hasta **25 `PutItem` o `DeleteItem`** (16 MB). **No** soporta `UpdateItem`.
+- Cada item del batch tiene éxito o falla por separado. Los que no se procesaron vuelven en **`UnprocessedItems`** o
+  **`UnprocessedKeys`** y hay que **reintentarlos** con backoff.
+
+### AWS CLI con DynamoDB
+
+```bash
+aws dynamodb query \
+  --table-name Orders \
+  --key-condition-expression "customerId = :c" \
+  --expression-attribute-values '{":c": {"S": "user-1"}}' \
+  --projection-expression "orderId, total" \
+  --max-items 10
+```
+
+- **`--projection-expression`**: qué atributos devolver.
+- **`--filter-expression`**: filtro aplicado después de leer.
+- **`--key-condition-expression`**: condición de la partition key (y opcionalmente la sort key).
+- **`--page-size`**: cantidad de items que el CLI pide **en cada llamada a la API**. Es útil para evitar timeouts en
+  tablas grandes.
+- **`--max-items`**: cantidad **total** de items que devuelve el comando. Si hay más, entrega un **`NextToken`**.
+- **`--starting-token`**: el `NextToken` anterior, para **continuar** desde donde quedó.
+
+### Conditional writes, concurrencia y optimistic locking
+
+- Un **conditional write** (`PutItem`, `UpdateItem` o `DeleteItem` con un **`ConditionExpression`**) solo se ejecuta si
+  la condición se cumple. Si no, falla con **`ConditionalCheckFailedException`** y **no cambia nada**.
+- Funciones útiles en las condiciones: `attribute_exists`, `attribute_not_exists`, `attribute_type`, `contains`,
+  `begins_with`, `size`, además de los operadores de comparación, `IN` y `BETWEEN`.
+- **Evitar sobrescribir** un item que ya existe: `PutItem` con `attribute_not_exists(partitionKey)`.
+- **Atomic counter**: con `UpdateItem` se incrementa un número de forma atómica, por ejemplo `SET visits = visits +
+  :inc`. Si dos clientes lo ejecutan a la vez, ambos incrementos se aplican.
+- **Optimistic locking**: cada item tiene un **atributo de versión**. Al actualizar, se envía una condición que verifica
+  que la versión **siga siendo la que se leyó**, y se incrementa. Si otro cliente modificó el item antes, la versión no
+  coincide, la escritura falla y la aplicación debe volver a leer y reintentar. Sirve cuando los conflictos son poco
+  frecuentes.
+
+### Índices secundarios (GSI y LSI)
+
+Por defecto solo se puede consultar por la primary key. Los índices permiten consultar por **otros atributos**.
+
+| Característica | **LSI** (Local Secondary Index) | **GSI** (Global Secondary Index) |
+| :--- | :--- | :--- |
+| Partition key | La **misma** que la tabla | Una **distinta** a la de la tabla |
+| Sort key | Una **distinta** | Opcional, distinta |
+| Cantidad | Hasta **5** por tabla | Hasta **20** por tabla (cuota por defecto) |
+| Cuándo se crea | **Solo al crear la tabla** | **En cualquier momento** |
+| Consistencia de lectura | Eventually o **strongly** consistent | **Solo eventually** consistent |
+| Capacidad | **Comparte** la capacidad de la tabla | Tiene su **propia** capacidad (RCU y WCU) |
+
+- Cada índice define una **projection**: qué atributos copia (`KEYS_ONLY`, `INCLUDE` o `ALL`).
+- Si un **GSI** no tiene suficiente capacidad de escritura, **las escrituras de la tabla base también reciben
+  throttling**. Por eso el GSI debe tener WCU adecuados.
+- Un LSI limita a **10 GB** el tamaño de una colección de items con la misma partition key.
+
+### PartiQL
+
+**PartiQL** es un lenguaje **compatible con SQL** para trabajar con DynamoDB: soporta `SELECT`, `INSERT`, `UPDATE` y
+`DELETE`. Se usa desde la consola, el CLI o los SDK.
+
+- Operaciones de la API: **`ExecuteStatement`**, **`BatchExecuteStatement`** y **`ExecuteTransaction`**.
+- Un `SELECT` también pagina: devuelve hasta **1 MB** y un `LastEvaluatedKey` para continuar.
+- Un `SELECT` sin condición sobre la primary key termina siendo un **scan** completo.
+
+### DynamoDB Accelerator (DAX)
+
+**DAX** es un **cache en memoria totalmente administrado** para DynamoDB. Baja la latencia de lectura de
+**milisegundos a microsegundos**.
+
+- Es **compatible con la API de DynamoDB**: no hay que cambiar la lógica de la aplicación, solo usar el cliente de DAX.
+- Funciona como un **cluster** de nodos (un primario y réplicas) dentro de la VPC.
+- Tiene un **item cache** y un **query cache**. El **TTL por defecto es de 5 minutos**.
+- Opera en **modo write-through**: las escrituras van a DAX y a la tabla.
+- Es ideal para **lecturas eventually consistent** y para cargas de lectura intensiva sobre las mismas keys (**hot
+  keys**). Las lecturas strongly consistent y los cache miss van a DynamoDB.
+- **DAX vs ElastiCache**: DAX acelera las **lecturas de DynamoDB** sin código adicional. ElastiCache sirve para
+  guardar **resultados agregados o calculados** (por ejemplo, el resultado de un `Scan` o de una consulta compleja) y
+  datos de cualquier origen.
+
+### DynamoDB Streams
+
+Un **stream** registra, en orden, **cada cambio** (creación, actualización y borrado) de los items de una tabla.
+
+- Los registros se guardan durante **24 horas**.
+- **Stream view types**, que definen qué se guarda en cada registro:
+  - `KEYS_ONLY`: solo las claves del item modificado.
+  - `NEW_IMAGE`: el item completo **después** del cambio.
+  - `OLD_IMAGE`: el item completo **antes** del cambio.
+  - `NEW_AND_OLD_IMAGES`: ambos.
+- Se procesan con **Lambda** (mediante un event source mapping), con la **Kinesis Client Library** o con otras
+  aplicaciones.
+- Casos de uso: reaccionar a cambios en tiempo real, enviar notificaciones, **analítica**, insertar datos en
+  **OpenSearch** y **replicación entre regiones** (global tables).
+- Alternativa: enviar los cambios a **Kinesis Data Streams**, que conserva los datos **hasta 365 días** y permite
+  varios consumers (por ejemplo, Firehose o Flink).
+
+### Time to Live (TTL)
+
+El **TTL** elimina automáticamente los items **vencidos**, sin consumir capacidad de escritura.
+
+- Se elige un **atributo** de tipo **Number** con un timestamp en formato **Unix epoch (segundos)**.
+- DynamoDB borra los items en segundo plano, **típicamente dentro de las 48 horas** posteriores al vencimiento y como
+  máximo en unos pocos días. Mientras tanto, el item **puede seguir apareciendo** en las lecturas.
+- Los borrados por TTL aparecen en **DynamoDB Streams**, lo que permite archivarlos o procesarlos.
+- Casos de uso: **sesiones**, datos temporales, logs que no hace falta conservar, cumplimiento de políticas de
+  retención.
+
+### Transacciones
+
+Las **transacciones** permiten **cambios coordinados "todo o nada"** sobre múltiples items, incluso en distintas
+tablas, con propiedades **ACID**.
+
+- **`TransactWriteItems`** y **`TransactGetItems`**.
+- Hasta **100 items** distintos por transacción, con un tamaño total de hasta **4 MB**. Deben estar en la **misma
+  cuenta y la misma región**.
+- Dos acciones de la misma transacción **no pueden apuntar al mismo item**.
+- Una acción `ConditionCheck` permite agregar condiciones sin modificar el item.
+- Consumen el **doble de capacidad** (2 RCU o 2 WCU por unidad).
+- Casos de uso: **transacciones financieras**, pedidos, reservas de stock, cualquier operación que no pueda quedar a
+  medias.
+
+### Casos de uso y patrones
+
+- **Session state**: DynamoDB (con **TTL**) es una opción habitual para guardar el estado de sesión de las aplicaciones
+  *stateless*. Ofrece persistencia y escala automática. **ElastiCache** es más rápido, pero no persiste los datos.
+  **EFS o EBS** sirven si el estado es de un solo servidor o necesita un file system, y **S3** se usa para objetos
+  grandes, no para sesiones.
+- **Objetos grandes con S3**: DynamoDB limita los items a **400 KB**. Para archivos más grandes se guarda el archivo en
+  **S3** y en DynamoDB se guarda la **metadata** y una **referencia** (el bucket y la key). También se usa DynamoDB para
+  **indexar los objetos de S3** y poder buscarlos por metadata, algo que S3 no permite.
+- **Operaciones de mantenimiento**: para **vaciar una tabla**, recorrerla con `Scan` y borrar item por item es lento y
+  caro. Es mejor **borrar la tabla y volver a crearla**. Para **copiar una tabla** se puede usar **AWS Backup**,
+  **exportar a S3** y **volver a importar**, o un trabajo que escanee y escriba.
+
+### Backups y Global Tables
+
+- **Backups on-demand**: copias completas que se conservan hasta que se borran, sin afectar el rendimiento. También se
+  administran con **AWS Backup**.
+- **Point-in-time recovery (PITR)**: backups continuos con **granularidad de un segundo**, hasta **35 días** atrás. La
+  restauración **siempre crea una tabla nueva**.
+- **Global Tables**: tablas **multi-región y multi-activas**, con **réplicas** en distintas regiones que aceptan
+  lecturas y escrituras. Los cambios se propagan en general en **menos de un segundo**. Dan baja latencia a usuarios
+  globales y **recuperación ante desastres**. Se apoyan en **DynamoDB Streams**.
+- **DynamoDB Local**: versión para desarrollo y pruebas locales, sin conexión a AWS.
+
+### Seguridad
+
+- **Autorización con IAM**, incluso a nivel de **item y atributo** (**fine-grained access control**) con condiciones
+  como `dynamodb:LeadingKeys`, que limita el acceso a items cuya partition key coincida con la identidad del usuario.
+- **Encriptación en reposo** siempre activada, con **KMS**. **En tránsito**, con TLS (HTTPS).
+- **VPC endpoint** (de tipo gateway) para acceder a DynamoDB **sin salir por internet**.
+- **AWS DMS** permite migrar datos hacia DynamoDB desde otras bases (y a la inversa), incluso entre motores distintos.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 261 de 448** - Lambda
+✅ **Completado hasta la lección 261 de 448** - DynamoDB
