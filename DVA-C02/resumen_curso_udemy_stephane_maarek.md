@@ -3755,8 +3755,58 @@ redesplegar el código de la aplicación (por ejemplo **feature flags**).
 > 📝 **Nota del examen**: para **cambiar la configuración o activar feature flags de forma gradual**, con **validación**
 > y **rollback automático**, sin redesplegar, se usa **AppConfig**.
 
----
+## Servicios Complementarios para el Examen
 
-## Progreso del Curso
+### Observabilidad adicional (CloudWatch)
 
-✅ **Completado hasta la lección 261 de 448** - Otros Servicios
+- **Metric filters**: extraen **métricas personalizadas** a partir del texto de los **logs** (por ejemplo contar la
+  palabra `ERROR`) y sobre ellas se pueden crear **alarmas**. Solo se aplican a los **eventos nuevos**, **no** a los
+  logs ya existentes.
+- **Subscription filters**: envían los logs **en tiempo real** a **Kinesis Data Streams, Firehose, Lambda** u
+  **OpenSearch**, incluso hacia **otra cuenta o región**.
+- **Embedded Metric Format (EMF)**: se escribe en los logs un **JSON estructurado** (con la clave `_aws`) y CloudWatch
+  **genera las métricas personalizadas automáticamente**, sin llamar a `PutMetricData`. Es la forma recomendada de
+  publicar **métricas personalizadas desde Lambda** (la función solo imprime el JSON) y soporta **alta cardinalidad**.
+- **`PutMetricData`**: API para publicar **métricas personalizadas**. La **resolución** estándar es de **1 minuto** y la
+  **alta resolución** llega a **1 segundo** (`StorageResolution=1`).
+- **Powertools for AWS Lambda**: librería que simplifica **logging estructurado, métricas (EMF), tracing con X-Ray** e
+  **idempotencia** en funciones Lambda.
+
+### Seguridad de aplicaciones y de cuenta
+
+| Servicio | Qué hace |
+| :--- | :--- |
+| **AWS WAF** | **Firewall de capa 7** (HTTP). Bloquea **SQL injection, XSS**, IPs, países y aplica **rate-based rules**. Se asocia a **ALB, API Gateway (REST), CloudFront, AppSync y Cognito User Pools**. **No** se asocia a un NLB |
+| **AWS Shield** | Protección contra **DDoS**. **Standard** es **gratis** y automático. **Advanced** es **pago**, con soporte del equipo de respuesta |
+| **Amazon GuardDuty** | **Detección de amenazas** con machine learning sobre **CloudTrail, VPC Flow Logs y logs de DNS** |
+| **Amazon Inspector** | **Escaneo de vulnerabilidades** automatizado en **EC2, imágenes de ECR y funciones Lambda** |
+| **AWS Config** | **Registra la configuración** de los recursos y **evalúa su cumplimiento** con reglas (por ejemplo "los buckets deben estar cifrados"). Guarda el **historial de cambios** |
+| **AWS Trusted Advisor** | Recomendaciones de **costos, rendimiento, seguridad, tolerancia a fallas y límites de servicio** |
+| **AWS Organizations** | Administra **varias cuentas**, con **facturación consolidada** y **SCPs** |
+
+> 📝 **Nota del examen**: **CloudTrail** responde **quién llamó a la API**, **Config** responde **cómo cambió la
+> configuración y si cumple las reglas**, y **CloudWatch** muestra **métricas y logs**. Para **proteger una aplicación
+> web de ataques como SQL injection**, **WAF**. Para **DDoS**, **Shield**.
+
+### AWS Systems Manager
+
+- Conjunto de herramientas para **operar instancias** (EC2 y on-premises) a escala, mediante el **SSM Agent**.
+- **Run Command**: ejecuta **comandos en muchas instancias** sin SSH.
+- **Session Manager**: **shell** en una instancia **sin abrir el puerto 22**, sin bastion host y con **registro** en S3 o
+  CloudWatch Logs.
+- **Patch Manager**: automatiza los **parches** del sistema operativo.
+- **Automation**: **runbooks** para tareas operativas.
+- **Parameter Store** y **AppConfig** también forman parte de Systems Manager.
+
+### Más conceptos de EC2
+
+- **Placement groups** (estrategias de ubicación de instancias):
+
+| Estrategia | Descripción |
+| :--- | :--- |
+| **Cluster** | Instancias **juntas en una misma AZ**: **baja latencia** y alto rendimiento de red, pero **mayor riesgo** si falla el hardware |
+| **Spread** | Cada instancia en **hardware distinto** (hasta **7 por AZ**): **alta disponibilidad** para pocas instancias críticas |
+| **Partition** | Grupos de instancias en **particiones** que no comparten hardware (hasta **7 por AZ**): para **Hadoop, Cassandra, Kafka** |
+
+- **EC2 Hibernate**: guarda la **RAM en el volumen raíz EBS (cifrado)** y al reiniciar la instancia retoma el estado, con
+  **arranque más rápido**. El volumen raíz debe ser **EBS cifrado** y hay un **máximo de 60 días** de hibernación.
