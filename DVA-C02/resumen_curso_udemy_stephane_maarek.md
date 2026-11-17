@@ -1767,8 +1767,128 @@ recursos. Respalda el estado de la aplicación con **checkpoints y snapshots**.
 | Orden | Con **FIFO** | Se integra con SQS FIFO | Por **shard** |
 | Otros | Puede configurar un **delay** de entrega | Se integra con SQS (fan-out) | Orientado a **big data en tiempo real** |
 
+## Amazon CloudWatch
+
+> 🔗 **Documentación oficial**: [Amazon CloudWatch User Guide](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/WhatIsCloudWatch.html)
+
+**CloudWatch** sirve para **recolectar y seguir métricas**, **monitorear y analizar archivos de logs**, **enviar
+notificaciones** de ciertos eventos y **reaccionar con alarmas** a eventos y métricas en tiempo real.
+
+### Métricas
+
+- Cada servicio de AWS publica métricas por defecto, y además se pueden crear **métricas custom**.
+- Se pueden armar **dashboards** para visualizarlas.
+- **Free tier**: incluye **10 métricas custom** y **10 alarmas**, y hasta **3 dashboards con 50 métricas cada uno**,
+  además de **5 GB de logs** y 1 millón de requests a la API por mes.
+- Se pueden enviar métricas con un timestamp **pasado o futuro**: CloudWatch acepta hasta **dos semanas hacia atrás** y
+  **dos horas hacia adelante**, y no devuelve error por eso.
+
+### Logs
+
+- Los logs se organizan en un **log group** (el nombre, que representa una aplicación) y dentro de él **log streams**
+  (el log en sí, por ejemplo un archivo de log o la salida de una aplicación o contenedor).
+- Se puede definir cuánto **tiempo se guardan** (o dejar que nunca expiren).
+- Se pueden enviar a **S3** (export), **Kinesis Data Streams**, **Amazon Data Firehose**, **Lambda** y
+  **OpenSearch** (estos cuatro últimos mediante *subscription filters*).
+- Se encriptan y se puede usar una key de **KMS**.
+- Para consultarlos se usa **Logs Insights**, que permite filtrar con una **query** qué logs mostrar.
+
+**Origen de los logs**:
+
+- **SDK** y el **CloudWatch agent**, instalado en servidores como EC2 o en servidores on-premise.
+- **Elastic Beanstalk**: logs de la aplicación.
+- **ECS**: logs de los contenedores.
+- **AWS Lambda**: logs de las funciones.
+- **API Gateway**: las requests.
+- **CloudTrail**: logs filtrados por una regla.
+- **Route 53**: las consultas DNS.
+
+> 📝 **CloudWatch agent**: el **unified agent** recolecta **logs y métricas** y es el que se debe usar. El agente
+> anterior, que solo recolectaba logs, está **deprecado y sin soporte**.
+
+### Alarmas
+
+Una alarma vigila **una métrica** y tiene tres estados: `OK`, `ALARM` e `INSUFFICIENT_DATA`. Puede disparar:
+
+- **Acciones de EC2**: por ejemplo, detener, terminar, reiniciar o recuperar una instancia.
+- **Acciones de EC2 Auto Scaling**: lanzar o terminar instancias.
+- **SNS**: para integrarse con otros servicios.
+
+Para alarmar según **varias métricas** se crean las alarmas individuales y luego una **composite alarm**, que combina
+sus estados mediante una **expresión de reglas**. Una composite alarm **no evalúa métricas**: solo mira el estado de
+las alarmas que referencia.
+
+- En la expresión se indica, para cada alarma referenciada, **en qué estado** debe estar (`ALARM`, `OK` o
+  `INSUFFICIENT_DATA`).
+- Esas condiciones se combinan con los operadores **`AND`**, **`OR`** y **`NOT`**, y se pueden agrupar con
+  **paréntesis**.
+
+Por ejemplo, para que se dispare solo cuando **todas** las alarmas elegidas están en `ALARM` se combinan con `AND`.
+Con `OR` bastaría con que **una** de ellas esté en `ALARM`.
+
+### Synthetics Canary
+
+Un **canary** es un script, programado para correr periódicamente, que **simula el comportamiento de los usuarios** y
+envía una alarma si detecta un error.
+
+## Amazon EventBridge (antes CloudWatch Events)
+
+> 🔗 **Documentación oficial**: [Amazon EventBridge User Guide](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-what-is.html)
+
+Sirve para **programar scripts** (ejecutarlos cada cierto tiempo) y para **reaccionar a eventos**. Los eventos se
+pueden **filtrar** y, una vez recibidos, se envían como **JSON** a múltiples destinos.
+
+Puede recibir eventos de:
+
+- **Servicios de AWS**.
+- **Partners de AWS** (SaaS).
+- **Aplicaciones propias** (custom).
+
+## AWS X-Ray
+
+> 🔗 **Documentación oficial**: [AWS X-Ray Developer Guide](https://docs.aws.amazon.com/xray/latest/devguide/aws-xray.html)
+
+Sirve para **ver errores y el rendimiento** de una aplicación, y es muy útil en aplicaciones divididas en
+**microservicios**. Permite ver el **flujo completo de una request**, desde que el usuario realiza la acción y por todos
+los servicios por los que pasa, para **encontrar dónde falla**.
+
+**Cómo habilitarlo** (disponible para Java, Python, Go, Node.js y .NET):
+
+1. Usar el **SDK de X-Ray** en el código. Captura las llamadas a servicios de AWS, requests HTTP, llamadas a bases de
+   datos y a colas SQS.
+2. Instalar el **X-Ray daemon** en el servidor donde corre la aplicación. El SDK le envía los datos al daemon, y este
+   los envía a X-Ray.
+3. En **EC2**, además, hay que asignar un **IAM role** con permisos.
+4. En **Lambda** **no** se instala el daemon: se habilita el **tracing activo** en la configuración de la función y se
+   le da un IAM role con permisos.
+
+> 📝 **Novedad**: desde el 25 de febrero de 2026, los **SDKs y el daemon de X-Ray están en modo mantenimiento** (solo
+> reciben correcciones de seguridad) y AWS recomienda usar **OpenTelemetry**. El curso enseña la forma clásica con SDK y
+> daemon.
+
+## AWS CloudTrail
+
+> 🔗 **Documentación oficial**: [AWS CloudTrail User Guide](https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-user-guide.html)
+
+Sirve para **monitorear las llamadas a las APIs** y **auditar los cambios** en los recursos de AWS. Está **habilitado por
+defecto** y guarda el historial de las llamadas y eventos hechos desde la consola, el SDK, el CLI y los servicios de
+AWS.
+
+- El **event history** conserva los **últimos 90 días** de eventos de gestión, por región. Para guardarlos por más
+  tiempo se crea un **trail** que los envíe a **S3** o a **CloudWatch Logs**, donde se pueden analizar.
+- Funciona en todas las regiones.
+- Si un recurso fue eliminado, **CloudTrail es el primer lugar donde investigar**.
+
+### CloudTrail vs CloudWatch vs X-Ray
+
+| Servicio | Para qué sirve |
+| :--- | :--- |
+| **CloudTrail** | **Auditar** las llamadas de usuarios, servicios y consola de AWS, por ejemplo para detectar llamadas no autorizadas |
+| **CloudWatch** | Obtener **métricas, logs y alarmas** |
+| **X-Ray** | Analizar el **trazado de requests**: mapa de visualización de latencia, errores y fallas, y seguimiento de cada request |
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 231 de 448** - Kinesis
+✅ **Completado hasta la lección 231 de 448** - CloudWatch
