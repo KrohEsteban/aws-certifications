@@ -114,6 +114,11 @@
     "ABAC",
     "descargable",
     "FIPS",
-    "vsock"
+    "vsock",
+    "DMARC",
+    "entregabilidad",
+    "ingestar",
+    "columnares",
+    "SASL"
   ]
 }

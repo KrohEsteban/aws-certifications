@@ -3641,8 +3641,122 @@ guardarlos en la plantilla:
 - **ACM Private CA**: **autoridad certificadora privada** para emitir certificados **internos** (**mTLS**, IoT,
   servicios internos).
 
+## Otros Servicios
+
+### Amazon SES (Simple Email Service)
+
+> 🔗 **Documentación oficial**: [Amazon SES Developer Guide](https://docs.aws.amazon.com/ses/latest/dg/Welcome.html)
+
+Servicio para **enviar y recibir emails** de forma **escalable**, tanto transaccionales como de marketing.
+
+- Se puede enviar por **SMTP** o por la **API de AWS (SDK)**.
+- Casos de uso: **notificaciones, newsletters, emails transaccionales** (confirmaciones de compra).
+- Se debe **verificar la identidad** (dominio o dirección de email). Con una cuenta nueva (**sandbox**) solo se puede
+  enviar a direcciones verificadas, y hay que **pedir la salida del sandbox**.
+- Soporta **DKIM**, **SPF** y **DMARC** para la **autenticación del correo** y mejorar la entregabilidad.
+- **Configuration sets**: permiten publicar **eventos** (envío, rebote, queja, apertura, clic) en **CloudWatch**,
+  **Kinesis Data Firehose**, **SNS** o **EventBridge**.
+- Se integra con **IAM**, **SNS**, **S3** y **Lambda** para **recibir emails** y procesarlos.
+
+### Amazon OpenSearch Service
+
+> 🔗 **Documentación oficial**: [Amazon OpenSearch Service](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/what-is.html)
+
+Sucesor de **Elasticsearch** en AWS. Sirve para **búsqueda de texto y análisis** de datos, y se complementa con
+**OpenSearch Dashboards** para visualizar.
+
+- Permite **buscar en cualquier campo**, incluso por **coincidencias parciales**, a diferencia de DynamoDB que solo
+  busca por **clave primaria o índices**.
+- Es común usarlo como **complemento de otra base de datos**: por ejemplo **DynamoDB Streams → Lambda → OpenSearch** para
+  poder **buscar** los datos de DynamoDB.
+- Se despliega como un **cluster de instancias** (no es serverless por defecto, aunque existe **OpenSearch Serverless**).
+- Seguridad: **Cognito**, **IAM**, **cifrado con KMS** y **TLS**.
+- Se integra con **Kinesis Data Firehose**, **CloudWatch Logs** (por **suscripciones**), **IoT** y **Lambda** para
+  **ingestar datos**.
+
+### Amazon Athena
+
+> 🔗 **Documentación oficial**: [Amazon Athena User Guide](https://docs.aws.amazon.com/athena/latest/ug/what-is.html)
+
+Servicio **serverless** de **consultas SQL** sobre datos **almacenados en S3**, basado en **Presto/Trino**.
+
+- Soporta **CSV, JSON, ORC, Avro y Parquet**.
+- **Precio**: por **TB de datos escaneados**. Para **ahorrar costos y mejorar el rendimiento**:
+  - Usar **formatos columnares** (**Parquet** u **ORC**), que escanean solo las columnas necesarias.
+  - **Comprimir** los datos.
+  - **Particionar** los datos por campos usados en los filtros (por ejemplo por fecha).
+  - Usar **archivos grandes** (más de 128 MB) en lugar de muchos archivos pequeños.
+- Se integra con **QuickSight** para reportes y con **AWS Glue Data Catalog** para el **esquema**.
+- Casos de uso: análisis **ad hoc**, **logs** de **VPC Flow Logs, ALB, CloudTrail, CloudFront**, y otros logs en S3.
+- **Federated Query**: consultar **otras fuentes de datos** (RDS, DynamoDB, on-premises) con **conectores** en Lambda.
+
+> 📝 **Nota del examen**: para **analizar datos en S3 con SQL sin servidores**, la respuesta es **Athena**. Para reducir
+> el costo, **Parquet/ORC**, **particionar** y **comprimir**.
+
+### Amazon MSK (Managed Streaming for Apache Kafka)
+
+> 🔗 **Documentación oficial**: [Amazon MSK Developer Guide](https://docs.aws.amazon.com/msk/latest/developerguide/what-is-msk.html)
+
+Alternativa **administrada** a **Kinesis Data Streams** para usar **Apache Kafka**.
+
+- AWS administra los **brokers** y **ZooKeeper/KRaft**, distribuidos en **múltiples AZ** y con **recuperación
+  automática**. Los datos se guardan en **volúmenes EBS** y se pueden **retener** el tiempo que se quiera.
+- **MSK Serverless**: no hace falta administrar la capacidad.
+- Los **mensajes** pueden ser de hasta **1 MB por defecto** (se configura hasta **10 MB**), a diferencia del límite de
+  **1 MB** de Kinesis.
+
+| Característica | **Kinesis Data Streams** | **Amazon MSK** |
+| :--- | :--- | :--- |
+| Tamaño máximo del dato | **1 MB** | **1 MB por defecto**, configurable a **10 MB** |
+| Estructura | **Streams** con **shards** | **Topics** con **particiones** |
+| Escalado | **Agregar/dividir shards** | **Agregar particiones** (no se pueden **quitar**) |
+| Cifrado en tránsito | **TLS** | **PLAINTEXT** o **TLS** |
+| Cifrado en reposo | **KMS** | **KMS** |
+| Seguridad | **IAM** | **TLS**, **SASL/SCRAM**, **IAM** y **ACLs** de Kafka |
+
+- **Consumidores** de MSK: **Flink**, **Glue** (ETL), **Lambda**, **Kinesis Data Firehose** y aplicaciones propias en
+  **EC2, ECS o EKS**.
+
+### Amazon Macie
+
+> 🔗 **Documentación oficial**: [Amazon Macie User Guide](https://docs.aws.amazon.com/macie/latest/user/what-is-macie.html)
+
+Servicio de **seguridad y privacidad de datos** que usa **machine learning** y **detección de patrones** para
+**descubrir y proteger datos sensibles** en **S3**.
+
+- Detecta **PII** (datos personales identificables) y otros datos sensibles como **credenciales** o **datos
+  financieros**.
+- Genera **hallazgos** (findings) que se envían a **EventBridge**, **Security Hub** y se pueden procesar con **Lambda**.
+- Evalúa también la **seguridad de los buckets** (acceso público, cifrado, compartidos).
+
+> 📝 **Nota del examen**: **PII en S3** → **Macie**. Los hallazgos se integran con **EventBridge** para automatizar
+> respuestas.
+
+### AWS AppConfig
+
+> 🔗 **Documentación oficial**: [AWS AppConfig](https://docs.aws.amazon.com/appconfig/latest/userguide/what-is-appconfig.html)
+
+Capacidad de **AWS Systems Manager** para **configurar y desplegar cambios de configuración** de forma **controlada**, sin
+redesplegar el código de la aplicación (por ejemplo **feature flags**).
+
+- La configuración se puede guardar en **AppConfig**, **S3**, **Parameter Store**, **Secrets Manager** o **SSM
+  Documents**.
+- **Despliegue gradual** con una **estrategia** (porcentaje de crecimiento, duración del despliegue y tiempo de
+  *bake*). Se pueden usar estrategias **predefinidas** (por ejemplo `AppConfig.Linear50PercentEvery30Seconds`,
+  `AppConfig.AllAtOnce`).
+- **Validadores**: validan la configuración **antes** de desplegarla, con un **JSON Schema** o con una **función
+  Lambda**.
+- **Rollback automático**: si se dispara una **alarma de CloudWatch** durante el despliegue, vuelve a la versión
+  anterior.
+- Las aplicaciones **consultan** la configuración (por polling) mediante el **agente de AppConfig** o la **extensión de
+  Lambda**, que la **cachea**.
+- Funciona con **EC2, Lambda, ECS, EKS** y aplicaciones on-premises.
+
+> 📝 **Nota del examen**: para **cambiar la configuración o activar feature flags de forma gradual**, con **validación**
+> y **rollback automático**, sin redesplegar, se usa **AppConfig**.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 261 de 448** - Identidad Avanzada y Seguridad/Cifrado
+✅ **Completado hasta la lección 261 de 448** - Otros Servicios
