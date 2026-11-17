@@ -101,6 +101,9 @@
     "linux",
     "redesplegar",
     "npmjs",
-    "codeartifact"
+    "codeartifact",
+    "autocompletado",
+    "tipado",
+    "pytest"
   ]
 }

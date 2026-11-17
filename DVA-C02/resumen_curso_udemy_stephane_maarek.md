@@ -2829,8 +2829,181 @@ software de forma segura. Evita depender directamente de repositorios públicos 
   y pueden **disparar un pipeline**.
 - Es la forma de que **CodeBuild** descargue dependencias de manera controlada.
 
+## AWS SAM (Serverless Application Model)
+
+> 🔗 **Documentación oficial**: [AWS SAM Developer Guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html)
+
+**AWS SAM** es un **framework open source** para construir aplicaciones **serverless** en AWS. Es una **extensión de
+CloudFormation**: se escribe una plantilla **corta** y SAM la **transforma en una plantilla de CloudFormation** completa
+al desplegar. Todo lo que se despliega con SAM es, en definitiva, un **stack de CloudFormation**.
+
+SAM tiene dos componentes: el **framework de plantillas** (la sintaxis simplificada) y la **SAM CLI** (comandos para
+construir, probar y desplegar).
+
+### Plantilla SAM
+
+Para que CloudFormation entienda los recursos de SAM, la plantilla debe incluir el **`Transform`**:
+
+```yaml
+Transform: AWS::Serverless-2016-10-31
+Resources:
+  MyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      CodeUri: src/
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /hello
+            Method: get
+```
+
+> 📝 **Nota del examen**: la línea **`Transform: AWS::Serverless-2016-10-31`** es lo que identifica una plantilla SAM.
+> Si una pregunta muestra esa línea, se trata de SAM. El resto de CloudFormation (`Parameters`, `Outputs`, `Mappings`,
+> recursos `AWS::...`) **sigue funcionando** en una plantilla SAM.
+
+### Tipos de recursos de SAM
+
+| Recurso | Crea |
+| :--- | :--- |
+| **`AWS::Serverless::Function`** | Función Lambda, rol de ejecución y **event source mappings** |
+| **`AWS::Serverless::Api`** | **REST API** de API Gateway |
+| **`AWS::Serverless::HttpApi`** | **HTTP API** de API Gateway |
+| **`AWS::Serverless::SimpleTable`** | Tabla de **DynamoDB** con una clave primaria simple |
+| **`AWS::Serverless::LayerVersion`** | **Lambda layer** |
+| **`AWS::Serverless::Application`** | Aplicación anidada (del **Serverless Application Repository** o local) |
+| **`AWS::Serverless::StateMachine`** | Máquina de estados de **Step Functions** |
+| **`AWS::Serverless::Connector`** | Permisos entre dos recursos, sin escribir la política IAM a mano |
+
+- Los **eventos** de una función (`Events`) pueden ser `Api`, `HttpApi`, `S3`, `SQS`, `SNS`, `Kinesis`, `DynamoDB`,
+  `Schedule`, `EventBridgeRule`, `Cognito`, entre otros. SAM crea los recursos y **permisos** necesarios.
+- **Policy templates**: plantillas de políticas IAM predefinidas (por ejemplo `S3ReadPolicy`, `DynamoDBCrudPolicy`,
+  `SQSPollerPolicy`) que se usan en el campo `Policies` en lugar de escribir el JSON completo.
+- Se puede escribir **CloudFormation normal** en la misma plantilla para recursos que SAM no abstrae.
+
+### SAM CLI: flujo de trabajo
+
+| Comando | Qué hace |
+| :--- | :--- |
+| **`sam init`** | Crea un **proyecto nuevo** a partir de una plantilla |
+| **`sam build`** | **Compila** el código, **instala dependencias** y deja el resultado en `.aws-sam/build` |
+| **`sam validate`** | Valida la plantilla |
+| **`sam package`** | **Sube** el código a **S3** y genera la plantilla lista para desplegar |
+| **`sam deploy`** | **Despliega** la aplicación (crea y ejecuta un **change set** de CloudFormation) |
+| **`sam local invoke`** | Ejecuta una función **localmente** en un contenedor Docker |
+| **`sam local start-api`** | Levanta un **API Gateway local** para probar los endpoints |
+| **`sam local start-lambda`** | Levanta un endpoint local que emula el **servicio Lambda** |
+| **`sam logs`** | Muestra los **logs** de las funciones desde CloudWatch |
+| **`sam sync`** | **Sincroniza** cambios rápido con la nube durante el desarrollo (`--watch` para hacerlo automático) |
+| **`sam delete`** | **Elimina** el stack y sus artefactos |
+
+- `sam deploy --guided` hace preguntas (stack name, región, bucket) y guarda las respuestas en **`samconfig.toml`**.
+- `sam package` + `sam deploy` es el equivalente de `aws cloudformation package` + `aws cloudformation deploy`.
+- **`sam local`** necesita **Docker** instalado. Sirve para probar y depurar sin desplegar.
+- **`sam sync`** actualiza **solo lo que cambió** y usa APIs de servicio directas cuando puede. Está pensado para
+  **desarrollo**, no para producción.
+
+### Despliegues graduales con SAM
+
+SAM integra **CodeDeploy** para hacer **despliegues graduales de Lambda** con muy pocas líneas:
+
+```yaml
+MyFunction:
+  Type: AWS::Serverless::Function
+  Properties:
+    AutoPublishAlias: live
+    DeploymentPreference:
+      Type: Canary10Percent5Minutes
+      Alarms:
+        - !Ref ErrorsAlarm
+      Hooks:
+        PreTraffic: !Ref PreTrafficFunction
+        PostTraffic: !Ref PostTrafficFunction
+```
+
+- **`AutoPublishAlias`**: publica una **versión nueva** en cada deploy y mueve el **alias** a esa versión.
+- **`DeploymentPreference`**: define la estrategia de tráfico (`Canary10Percent5Minutes`, `Linear10PercentEvery1Minute`,
+  `AllAtOnce`, etc.), las **alarmas de CloudWatch** que disparan un **rollback automático** y los **hooks** (funciones
+  Lambda que se ejecutan antes y después del cambio de tráfico).
+- SAM crea la **aplicación y el deployment group de CodeDeploy** automáticamente.
+
+### Múltiples ambientes
+
+- Se despliega **el mismo template** con **distintos parámetros** o **distintos stacks** (`--stack-name`,
+  `--parameter-overrides`).
+- **`samconfig.toml`** puede tener **secciones por ambiente** (por ejemplo `default`, `staging`, `prod`) y se elige con
+  `sam deploy --config-env prod`.
+
+### Serverless Application Repository (SAR)
+
+- Repositorio **administrado** para **publicar, descubrir y desplegar** aplicaciones serverless, públicas o privadas.
+- Una aplicación publicada se puede **reutilizar** en otra plantilla con `AWS::Serverless::Application`.
+
+## AWS CDK (Cloud Development Kit)
+
+> 🔗 **Documentación oficial**: [AWS CDK Developer Guide](https://docs.aws.amazon.com/cdk/v2/guide/home.html)
+
+**AWS CDK** permite **definir la infraestructura con un lenguaje de programación** en lugar de escribir JSON o YAML.
+Soporta **TypeScript, JavaScript, Python, Java, C# y Go**. El código se **sintetiza (`synth`) a plantillas de
+CloudFormation**, que son las que realmente se despliegan.
+
+- Se pueden usar **bucles, condicionales, clases y funciones**, y también escribir la **lógica de la aplicación y la
+  infraestructura en el mismo lenguaje y repositorio**.
+- Se obtienen **autocompletado, tipado y pruebas unitarias** propias del lenguaje.
+- **CDK vs SAM**: SAM es **solo para serverless** y usa YAML/JSON. CDK sirve para **toda la infraestructura de AWS** y
+  usa un lenguaje de programación. Ambos terminan en **CloudFormation**.
+
+### Constructs
+
+Un **construct** es un componente de CDK que representa **uno o más recursos de CloudFormation**. Hay tres niveles:
+
+| Nivel | Nombre | Descripción |
+| :--- | :--- | :--- |
+| **L1** | **CFN Resources** | Mapeo **1 a 1** con un recurso de CloudFormation. Empiezan con **`Cfn`** (por ejemplo `CfnBucket`). Se configura todo a mano |
+| **L2** | **Intent-based** | **Abstracción** con valores por defecto sensatos, métodos útiles (por ejemplo `bucket.grantRead(fn)`) y buenas prácticas |
+| **L3** | **Patterns** | Combinan **varios recursos** para resolver un caso común (por ejemplo `ApplicationLoadBalancedFargateService`) |
+
+- Las **construct libraries** se importan como paquetes del lenguaje (`aws-cdk-lib`).
+- Estructura: una **App** contiene uno o más **Stacks**, y cada stack contiene **constructs**. Cada **stack de CDK**
+  genera un **stack de CloudFormation**.
+
+### CDK CLI
+
+| Comando | Qué hace |
+| :--- | :--- |
+| **`cdk init`** | Crea un **proyecto nuevo** (`--language`) |
+| **`cdk bootstrap`** | **Prepara la cuenta y región** para CDK (se hace **una vez por cuenta y región**) |
+| **`cdk synth`** | **Sintetiza** el código y muestra la **plantilla de CloudFormation** |
+| **`cdk diff`** | **Compara** el stack desplegado con el código local |
+| **`cdk deploy`** | **Despliega** el stack |
+| **`cdk destroy`** | **Elimina** el stack |
+| **`cdk ls`** | Lista los stacks de la app |
+
+- **Bootstrapping**: crea el stack **`CDKToolkit`**, con un **bucket de S3** (para los assets como código Lambda), un
+  **repositorio ECR** y **roles IAM** que CDK usa para desplegar. Es **obligatorio** antes de desplegar stacks que usan
+  assets.
+- Los **assets** son archivos locales (código de Lambda, imágenes de Docker) que CDK **sube automáticamente** al bucket
+  o a ECR durante el deploy.
+
+### Pruebas con CDK
+
+- El módulo **`assertions`** de `aws-cdk-lib` permite probar la **plantilla sintetizada**.
+- **Fine-grained assertions**: verifican que **un recurso tenga ciertas propiedades**
+  (`template.hasResourceProperties(...)`), que haya una **cantidad de recursos** (`resourceCountIs`) o que exista un
+  output.
+- **Snapshot tests**: comparan la plantilla actual contra una **guardada previamente**, para detectar cambios no
+  esperados.
+- Se pueden usar los frameworks de pruebas del lenguaje (**Jest** en TypeScript, **pytest** en Python, etc.).
+
+> 📝 **Nota del examen**: CDK **no reemplaza** a CloudFormation, lo **usa por debajo**. Con **`cdk synth`** se obtiene la
+> plantilla y con **`cdk deploy`** se despliega. Antes del primer deploy en una cuenta y región hace falta
+> **`cdk bootstrap`**.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 261 de 448** - CI/CD
+✅ **Completado hasta la lección 261 de 448** - SAM y CDK
