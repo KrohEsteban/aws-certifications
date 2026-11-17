@@ -80,6 +80,13 @@
     "ebextensions",
     "Flink",
     "reprocesar",
-    "reprocesarlos"
+    "reprocesarlos",
+    "síncrona",
+    "síncrono",
+    "reintenta",
+    "idempotencia",
+    "iterador",
+    "reprocesa",
+    "redrive"
   ]
 }

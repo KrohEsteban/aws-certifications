@@ -1887,8 +1887,124 @@ AWS.
 | **CloudWatch** | Obtener **métricas, logs y alarmas** |
 | **X-Ray** | Analizar el **trazado de requests**: mapa de visualización de latencia, errores y fallas, y seguimiento de cada request |
 
+## AWS Lambda
+
+> 🔗 **Documentación oficial**: [AWS Lambda Developer Guide](https://docs.aws.amazon.com/lambda/latest/dg/welcome.html)
+
+**Lambda** es un servicio para crear **funciones que se ejecutan sin administrar servidores**. Corren **on-demand** y,
+a diferencia de EC2, **escalan automáticamente**.
+
+- **Timeout**: hasta **15 minutos (900 segundos)** por ejecución en las funciones estándar.
+- **Precio**: se paga **por request** y por **tiempo de cómputo**.
+- **Free tier**: **1 millón de requests** y **400.000 GB-segundos** de cómputo por mes.
+- **Lenguajes**: Node.js, Python, Java, .NET (C#) y Ruby como runtimes administrados. Otros lenguajes, como Rust o Go,
+  se usan con un **runtime OS-only** (custom runtime).
+- Se integra con **muchos servicios de AWS**, se **monitorea fácil con CloudWatch** y es fácil darle más recursos a
+  cada función.
+
+> 📝 **Novedad**: la documentación actual llama **Lambda Event Functions** al modelo clásico de funciones y suma otros
+> modelos (como Web Functions y Managed Instances). El límite de 15 minutos aplica a las funciones estándar.
+
+### Integraciones principales
+
+- **API Gateway**: entrada REST para nuestra API.
+- **Kinesis**: procesar datos en streaming.
+- **DynamoDB**: como trigger, cuando algo cambia en la tabla se dispara la Lambda (con DynamoDB Streams).
+- **S3**: dispara una Lambda, por ejemplo, cuando se sube un archivo.
+- **CloudFront**: ejecutar lógica desde el borde (Lambda@Edge).
+- **CloudWatch Events / EventBridge**: eventos que disparan la Lambda.
+- **CloudWatch Logs**: procesar los logs y enviar información a donde haga falta.
+- **SNS**: reaccionar ante notificaciones.
+- **SQS**: procesar mensajes de una cola.
+- **Cognito**: reaccionar a eventos de autenticación.
+
+Ejemplos comunes:
+
+- Se sube una **imagen a S3**, lo que dispara una Lambda que genera un **thumbnail** y guarda la metadata en
+  **DynamoDB**.
+- Una **regla de EventBridge con un schedule** dispara una Lambda para ejecutar una tarea cada cierto tiempo.
+
+### Tipos de invocación
+
+| Tipo | Quién la origina | Cómo funciona | Errores y reintentos |
+| :--- | :--- | :--- | :--- |
+| **Síncrona** | SDK, CLI, API Gateway, ALB | El que invoca **espera** a que la Lambda procese y responda | Los gestiona **quien invoca** |
+| **Asíncrona** | S3, SNS, EventBridge | Lambda recibe el evento y lo procesa | Lambda **reintenta** y se puede usar una **DLQ** o **destinations** |
+| **Event source mapping** | Kinesis Data Streams, SQS, SQS FIFO, DynamoDB Streams | **Lambda hace polling** del servicio y lo invoca con lotes (batches) | Depende del origen (ver más abajo) |
+
+### Invocación síncrona: ALB + Lambda
+
+Para exponer una Lambda a través de un **ALB**, se **registra la función en un target group**. Cuando llega un request
+por HTTPS, el ALB lo convierte en un **JSON** y se lo envía a la Lambda.
+
+- La Lambda responde también en **JSON** y el ALB lo convierte en una respuesta **HTTP**.
+- Tanto en el request como en la respuesta, los **headers** van como pares key/value dentro del JSON.
+- El **body** se puede enviar en **base64**, indicándolo con el campo **`isBase64Encoded`** (`true` o `false`).
+- Si se habilitan los **multi-value headers** en el **target group**, la Lambda recibe y devuelve `multiValueHeaders`
+  en lugar de `headers`. Según el curso, los query params con varios valores para el mismo atributo llegan como un
+  **arreglo**.
+
+### Invocación asíncrona
+
+La usan servicios como **S3**, **SNS** y **EventBridge**. Lambda procesa el evento y, si hay un error, lo
+**reintenta**.
+
+- Por defecto reintenta **2 veces** y retiene el evento hasta **6 horas**.
+- Como puede haber reintentos, **pueden aparecer duplicados**: la función tiene que estar preparada para eso
+  (idempotencia).
+- Si el error persiste se puede definir una **DLQ (dead-letter queue)** en **SQS** o **SNS** para procesar los eventos
+  fallidos.
+
+**EventBridge (CloudWatch Events) + Lambda**: se puede definir un **cron** para invocar una Lambda cada cierto
+tiempo, o usar un evento de otro servicio (por ejemplo, de **CodePipeline**) como disparador.
+
+**S3 Event Notifications + Lambda**: S3 puede notificar eventos de objetos creados, eliminados, restaurados y
+replicados. Pueden ir a **SNS**, **SQS** o directo a **Lambda**.
+
+- Directo a Lambda es un proceso **asíncrono** y puede tardar **segundos o incluso un minuto o más**.
+- Conviene **activar el versionado** del bucket: si dos escrituras sobre un mismo objeto sin versionado ocurren a la
+  vez, puede enviarse **una sola** notificación. Con versionado se envía una por cada escritura exitosa.
+
+### Event Source Mapping
+
+Es un tercer tipo de proceso, distinto del síncrono y del asíncrono. Acá **Lambda hace polling** del servicio de
+origen: **Kinesis Data Streams**, **SQS**, **SQS FIFO** y **DynamoDB Streams**.
+
+**Streams (Kinesis y DynamoDB Streams)**:
+
+- Se crea un **iterador por cada shard** del stream y los registros se consumen **en orden**. Según el curso, se pueden
+  procesar hasta **10 batches en paralelo por shard**.
+- Si hay un **error**, se **reprocesa todo el batch** hasta que funcione o hasta que los registros **expiren**. Un
+  batch con error puede **bloquear** el procesamiento.
+- Para evitarlo se puede **limitar la cantidad de reintentos**, **descartar los registros viejos** y, según el curso,
+  **dividir el batch** que falla (para no chocar con el timeout de la Lambda).
+- Los registros descartados pueden enviarse a un **destino**, como una cola **SQS**.
+
+**SQS y SQS FIFO**:
+
+- Se configura el **batch size** y se puede usar **long polling**.
+- Lambda invoca la función de forma **sincrónica**, por eso la **DLQ se configura en la cola SQS de origen** (con su
+  redrive policy), **no en la Lambda**. AWS recomienda un `maxReceiveCount` de al menos 5.
+
+> 📝 **Nota del examen**: la DLQ **de la función** y los **destinations** sirven para invocaciones **asíncronas**. Con
+> **SQS como origen**, la DLQ va en la **cola**.
+
+### Lambda Destinations
+
+Permiten enviar el resultado de las invocaciones **asíncronas** a un destino, separando los eventos **exitosos**
+(on-success) de los **fallidos** (on-failure).
+
+- Destinos posibles: **SQS**, **SNS**, **otra Lambda** y un **bus de EventBridge**.
+- Un **bucket de S3** también se soporta, pero **solo para fallas**.
+- Se pueden usar **además de** una DLQ o **en lugar de** ella.
+
+### Variables de entorno
+
+Lambda permite definir **variables de entorno** como pares **key/value**. Se **encriptan siempre en reposo** con KMS:
+por defecto con una key administrada por AWS, y también se puede usar una key propia.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 231 de 448** - CloudWatch
+✅ **Completado hasta la lección 261 de 448** - Lambda
