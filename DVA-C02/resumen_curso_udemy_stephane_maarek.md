@@ -1601,8 +1601,73 @@ stack, por ejemplo para evitar que un stack modifique un servicio ya creado.
 CloudFormation **no puede eliminar un bucket que tiene objetos**: primero hay que **vaciarlo**, o la eliminación del
 stack falla. Si no se puede vaciar, se puede **retener** el recurso al borrar el stack.
 
+## Amazon SQS (Simple Queue Service)
+
+> 🔗 **Documentación oficial**: [Amazon SQS Developer Guide](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/welcome.html)
+
+Una **cola SQS** es una lista de mensajes. Los **producers** envían mensajes a la cola y los **consumers** los reciben y
+los procesan. Sirve para **desacoplar aplicaciones**: el producer no depende de que el consumer esté disponible en ese
+momento.
+
+- Puede haber **todos los producers y consumers** que se necesiten, y la cola puede acumular **todos los mensajes**
+  que hagan falta.
+- El consumer tiene que **borrar el mensaje** de la cola cuando termina de procesarlo. Si no lo borra, el mensaje
+  vuelve a ser visible después del visibility timeout.
+- **Retención**: por defecto **4 días**, con un mínimo de 1 minuto y un máximo de **14 días**. Pasado ese tiempo, el
+  mensaje se elimina.
+- **Tamaño máximo por mensaje**: **1 MiB (1.024 KB)**. Para mensajes más grandes se guarda el contenido en **S3** y por
+  SQS se envía un puntero (referencia) al objeto.
+
+> 📝 **Nota**: hasta agosto de 2025 el límite era de 256 KB. Si el curso menciona 256 KB, está desactualizado.
+
+### Standard vs FIFO
+
+| Característica | Standard | FIFO |
+| :--- | :--- | :--- |
+| Throughput | Casi **ilimitado** | **300 msg/s** sin batching, **3.000 msg/s** con batching |
+| Entrega | **At-least-once**: puede haber mensajes duplicados | Sin duplicados (exactly-once processing) |
+| Orden | De mejor esfuerzo: puede llegar desordenado | **First In, First Out**: los mensajes salen en orden |
+
+### Visibility Timeout
+
+Cuando un consumer recibe un mensaje, este queda **invisible para los demás consumers** durante el **visibility
+timeout**, que por defecto es de **30 segundos**.
+
+- Si el consumer necesita más tiempo, debe llamar a la API **`ChangeMessageVisibility`** para ampliarlo (hasta un
+  máximo de 12 horas).
+- Si el tiempo se agota sin que el mensaje se haya borrado, vuelve a ser visible y **otro consumer lo recibe**, lo que
+  genera un procesamiento duplicado.
+
+### Long Polling
+
+Cuando un consumer pide mensajes puede esperar a que **lleguen** en lugar de recibir una respuesta vacía enseguida:
+
+- **Short polling**: responde de inmediato, aunque no haya mensajes.
+- **Long polling**: el consumer espera hasta **20 segundos** como máximo a que llegue un mensaje.
+
+Se recomienda **long polling** porque **reduce las respuestas vacías**, baja la cantidad de llamadas a la API (y su
+costo) y disminuye la latencia.
+
+### Dead Letter Queue (DLQ)
+
+Una **DLQ** es una cola que guarda los mensajes que **fallaron muchas veces** al procesarse. Por ejemplo, un mensaje
+con un error que el consumer nunca logra procesar: después de superar un **umbral de intentos de recepción** se envía a
+la DLQ, para analizarlo más adelante y depurar el problema sin que bloquee la cola principal.
+
+### Seguridad y acceso
+
+- **Encriptación en reposo**: **SSE-SQS** (keys administradas por SQS) o **SSE-KMS** (keys de AWS KMS).
+- **Encriptación en tránsito**: llamadas por **HTTPS**.
+- **Client-side encryption**: el cliente encripta el mensaje antes de enviarlo.
+- **Control de acceso**: con **políticas IAM** o con **access policies propias de SQS** (policies adjuntas a la cola).
+- **Acceso entre cuentas**: se aplica una **policy a la cola** que permite el acceso a otra cuenta.
+
+> 📝 **S3 enviando eventos a una cola de otra cuenta**: la cola necesita una **policy que permita al servicio S3 enviar
+> mensajes**. Si la cola usa SSE con KMS, hace falta una **key administrada por el cliente** (no sirve la key
+> administrada por AWS) y darle permisos a S3 sobre esa key.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 179 de 448** - CloudFormation
+✅ **Completado hasta la lección 179 de 448** - SQS
