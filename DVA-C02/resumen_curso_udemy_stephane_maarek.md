@@ -2629,8 +2629,208 @@ Un esquema serverless habitual combina varios servicios:
 Si el backend necesita procesamiento asíncrono, API Gateway puede integrarse directamente con **SQS**, **SNS**,
 **Kinesis** o **Step Functions**, sin pasar por Lambda.
 
+## AWS CI/CD (CodeCommit, CodePipeline, CodeBuild, CodeDeploy)
+
+> 🔗 **Documentación oficial**: [AWS CodeCommit](https://docs.aws.amazon.com/codecommit/latest/userguide/welcome.html) ·
+> [AWS CodePipeline](https://docs.aws.amazon.com/codepipeline/latest/userguide/welcome.html) ·
+> [AWS CodeBuild](https://docs.aws.amazon.com/codebuild/latest/userguide/welcome.html) ·
+> [AWS CodeDeploy](https://docs.aws.amazon.com/codedeploy/latest/userguide/welcome.html) ·
+> [AWS CodeArtifact](https://docs.aws.amazon.com/codeartifact/latest/ug/welcome.html)
+
+### Introducción a CI/CD en AWS
+
+- **CI (Continuous Integration)**: los desarrolladores **suben el código con frecuencia** a un repositorio, y cada
+  cambio dispara una **compilación y pruebas automáticas**. Detecta errores temprano.
+- **Continuous Delivery**: el código validado queda **listo para desplegarse**, y el despliegue a producción requiere un
+  **paso manual** (por ejemplo, una aprobación).
+- **Continuous Deployment**: cada cambio que pasa las pruebas se **despliega automáticamente** a producción.
+
+El flujo completo en AWS combina varios servicios:
+
+| Etapa | Servicio |
+| :--- | :--- |
+| **Código** (source) | **CodeCommit**, GitHub, Bitbucket o S3 |
+| **Build y test** | **CodeBuild** (o Jenkins) |
+| **Despliegue** | **CodeDeploy**, Elastic Beanstalk, CloudFormation, ECS |
+| **Orquestación** de todo el flujo | **CodePipeline** |
+| **Dependencias y paquetes** | **CodeArtifact** |
+
+### CodeCommit
+
+**CodeCommit** es un servicio de **repositorios Git privados y administrados**, que escala sin que haya que operar
+servidores.
+
+- **Autenticación**: con **claves SSH** o con **credenciales HTTPS** (se puede usar el helper de AWS CLI), y soporta
+  **MFA**.
+- **Autorización**: con **políticas de IAM**.
+- **Encriptación**: **en reposo** automáticamente con **KMS**, y **en tránsito** por HTTPS o SSH.
+- **Acceso entre cuentas**: no se comparten claves SSH ni credenciales. Se usa un **rol de IAM** y la API **STS
+  `AssumeRole`**.
+- **Notificaciones y triggers**: los eventos del repositorio (push, pull requests, comentarios) se pueden enviar a
+  **SNS**, **Lambda** o **EventBridge**.
+
+> 📝 **Novedad**: en julio de 2024 AWS cerró CodeCommit a clientes nuevos, pero en noviembre de 2025 anunció su
+> **regreso a disponibilidad general**. Algunas páginas de la documentación todavía muestran el aviso anterior. En el
+> examen, igual aparece como el servicio de repositorios Git de AWS.
+
+### CodePipeline
+
+**CodePipeline** es un servicio de **orquestación** que automatiza el flujo desde el código hasta el despliegue.
+
+- Un **pipeline** es un conjunto ordenado de **stages**, y cada stage tiene una o más **actions**.
+- Debe tener **al menos dos stages**, y **el primero tiene que ser el de source**. Los demás pueden ser de build, test,
+  deploy, approval o invoke.
+- Las actions de un stage pueden correr en **secuencia o en paralelo**.
+- Cada action recibe **input artifacts** y produce **output artifacts**, que se guardan en un **bucket de S3**
+  (artifact store), encriptado con KMS.
+- Puede incluir una **manual approval action**, que frena el pipeline hasta que alguien apruebe.
+- **Triggers**: el pipeline se dispara cuando hay un cambio en el repositorio (por ejemplo, mediante **EventBridge**), de
+  forma programada o manualmente. Los pipelines **V2** permiten **filtrar** por branch, tag o pull request.
+- Si un stage **falla**, el pipeline se detiene en ese punto. Los cambios de estado generan **eventos de
+  EventBridge** que se pueden usar para **notificaciones**, y las llamadas a la API quedan en **CloudTrail**.
+- El pipeline usa un **rol de servicio de IAM**: sus permisos deben cubrir todos los servicios que invoca.
+
+### CodeBuild
+
+**CodeBuild** es un servicio de **build administrado y serverless**: compila el código, ejecuta las pruebas y genera
+artefactos. Se **escala automáticamente** y se paga **por el tiempo de build**.
+
+- **Source**: CodeCommit, S3, GitHub, Bitbucket, y también desde CodePipeline.
+- Las instrucciones se definen en un archivo **`buildspec.yml`**, que se ubica en la **raíz del código fuente** (o se
+  define al crear el proyecto).
+- **Build environments**: imágenes de Docker administradas por AWS (con distintos lenguajes y runtimes) o **imágenes
+  propias**.
+- Los **artefactos** de salida se suben a **S3**, encriptados con KMS.
+- Los **logs** van a **CloudWatch Logs** (y opcionalmente a S3), y hay **métricas** de CloudWatch. Los cambios de estado
+  del build generan **eventos de EventBridge**.
+- Un build puede correr **dentro de una VPC**, para acceder a recursos privados (por ejemplo, una base de datos de
+  pruebas).
+- Para **depurar un build**, se puede **correr CodeBuild localmente**.
+
+**Estructura del `buildspec.yml`**:
+
+```yaml
+version: 0.2
+env:
+  variables:
+    ENVIRONMENT: "dev"
+  parameter-store:
+    DB_PASSWORD: /app/db/password
+phases:
+  install:
+    commands:
+      - echo "Instalando dependencias"
+  pre_build:
+    commands:
+      - echo "Corriendo tests"
+  build:
+    commands:
+      - echo "Compilando"
+  post_build:
+    commands:
+      - echo "Build terminado"
+artifacts:
+  files:
+    - '**/*'
+cache:
+  paths:
+    - '/root/.m2/**/*'
+```
+
+- **`env`**: variables de entorno en texto plano (`variables`) o tomadas de **SSM Parameter Store**
+  (`parameter-store`) o de **Secrets Manager** (`secrets-manager`).
+- **`phases`**: `install` (instalar paquetes), `pre_build` (comandos previos, como el login a un registro o los tests),
+  `build` (el build en sí) y `post_build` (tareas finales, como empaquetar o subir una imagen).
+- **`artifacts`**: qué archivos se suben a S3 al terminar.
+- **`cache`**: directorios que se guardan en S3 para **acelerar los builds** siguientes (por ejemplo, las dependencias).
+
+### CodeDeploy
+
+**CodeDeploy** automatiza el **despliegue de aplicaciones** a distintos destinos (compute platforms):
+
+- **EC2 / servidores on-premises**: requieren que esté instalado el **CodeDeploy Agent**.
+- **AWS Lambda**: cambia el tráfico entre versiones mediante un **alias** (ver la sección de Lambda).
+- **Amazon ECS**: despliegues blue/green de servicios.
+
+Conceptos clave:
+
+- **Application**: el nombre lógico de lo que se despliega.
+- **Deployment group**: el conjunto de destinos (instancias identificadas por **tags** o un **Auto Scaling Group**).
+- **Revision**: la versión del código y el **AppSpec** que se despliega (en **S3** o en GitHub).
+- **Deployment configuration**: define **cuántas instancias se actualizan a la vez**.
+
+**El archivo `appspec.yml`** va en la **raíz** del código y le indica a CodeDeploy qué hacer. En EC2 incluye:
+
+- **`files`**: qué archivos copiar y a qué destino.
+- **`hooks`**: scripts que se ejecutan en distintos momentos del despliegue. El orden es: `ApplicationStop`,
+  `DownloadBundle`, `BeforeInstall`, `Install`, `AfterInstall`, `ApplicationStart` y `ValidateService`.
+
+```yaml
+version: 0.0
+os: linux
+files:
+  - source: /
+    destination: /var/www/app
+hooks:
+  BeforeInstall:
+    - location: scripts/stop_server.sh
+  ApplicationStart:
+    - location: scripts/start_server.sh
+  ValidateService:
+    - location: scripts/health_check.sh
+      timeout: 60
+```
+
+- Si un script de un hook **termina con un código distinto de cero**, el despliegue falla y se puede disparar un
+  **rollback**.
+- **`ValidateService`** es el último hook y se usa para comprobar que la aplicación quedó funcionando.
+
+**Tipos de despliegue en EC2 / on-premises**:
+
+| Tipo | Cómo funciona |
+| :--- | :--- |
+| **In-place** | Se actualizan **las mismas instancias**, con la aplicación detenida en cada una mientras se despliega. Se controla con la deployment configuration |
+| **Blue/Green** | Se lanzan **instancias nuevas** (con un Auto Scaling Group) con la versión nueva, y el **load balancer** pasa el tráfico a ellas. Las viejas se pueden terminar después. Requiere un **load balancer** |
+
+**Deployment configurations (EC2)**: **`AllAtOnce`** (todas las instancias a la vez), **`HalfAtATime`** (la mitad),
+**`OneAtATime`** (de a una) o una **configuración personalizada** que indica el mínimo de instancias sanas.
+
+**Rollbacks**: CodeDeploy puede revertir **automáticamente** si el despliegue falla o si se activa una **alarma de
+CloudWatch**, volviendo a la **última revisión estable**. También se puede **redesplegar** manualmente una versión
+anterior.
+
+### CodeDeploy con EC2 y Auto Scaling Group
+
+- Las instancias deben tener instalado el **CodeDeploy Agent**, que **consulta el servicio por HTTPS** (no necesita
+  puertos de entrada), descarga la revisión y ejecuta los hooks. Necesitan un **instance profile** con permisos para leer
+  la revisión (por ejemplo, desde S3).
+- Al asociar un **Auto Scaling Group** a un deployment group, CodeDeploy crea un **lifecycle hook** en el ASG: las
+  instancias nuevas quedan en espera (`Pending:Wait`) hasta que CodeDeploy les despliega la **última revisión**. Así,
+  las instancias que lanza el ASG al **escalar** siempre tienen la versión actual.
+- En un **blue/green con ASG**, CodeDeploy crea un **ASG nuevo** (copia del original), despliega la versión nueva ahí,
+  mueve el tráfico del **load balancer** y después puede terminar el ASG anterior.
+
+### CodeArtifact
+
+**CodeArtifact** es un **repositorio de artefactos y dependencias** administrado, para almacenar y compartir paquetes de
+software de forma segura. Evita depender directamente de repositorios públicos como npm o Maven Central.
+
+- Soporta los gestores de paquetes más usados: **Maven y Gradle, npm y yarn, pip y twine, NuGet**, entre otros.
+- Se organiza en un **domain** (agrupa y comparte los repositorios, y centraliza la encriptación) y en **repositories**.
+- **Upstream repositories**: un repositorio puede **encadenarse con otros**, y consultarlos cuando no tiene un paquete.
+- **External connection**: conexión de un repositorio a uno **público** (npmjs, Maven Central, PyPI). Los paquetes se
+  descargan la primera vez y quedan **guardados (cacheados)** en CodeArtifact. Los desarrolladores solo usan
+  CodeArtifact.
+- **Seguridad**: acceso mediante **IAM** (con políticas de recurso para acceso entre cuentas) y encriptación con
+  **KMS**.
+- **Autenticación**: el cliente (npm, pip, etc.) obtiene un **token de autorización** con `aws codeartifact login`, que
+  vale como máximo **12 horas** y hay que renovar.
+- Los eventos de CodeArtifact (por ejemplo, la publicación de una nueva versión de un paquete) llegan a **EventBridge**
+  y pueden **disparar un pipeline**.
+- Es la forma de que **CodeBuild** descargue dependencias de manera controlada.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 261 de 448** - API Gateway
+✅ **Completado hasta la lección 261 de 448** - CI/CD
