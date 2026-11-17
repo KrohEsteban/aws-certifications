@@ -3263,8 +3263,386 @@ con rapidez. Se apoya en otros servicios de AWS, que se **aprovisionan por detr�
 > 📝 **Nota del examen**: Amplify es la respuesta cuando se pide **empezar rápido con una app web o móvil** con
 > **autenticación, API, storage y hosting** sin administrar la infraestructura.
 
+## Identidad Avanzada (STS, IAM avanzado y Directory Services)
+
+> 🔗 **Documentación oficial**: [AWS Security Token Service](https://docs.aws.amazon.com/STS/latest/APIReference/welcome.html)
+
+### AWS STS (Security Token Service)
+
+**STS** entrega **credenciales temporales** (**access key ID, secret access key y session token**) con **permisos
+limitados**. Las credenciales **expiran** y no hace falta rotarlas ni guardarlas.
+
+| API | Para qué se usa |
+| :--- | :--- |
+| **`AssumeRole`** | **Asumir un rol IAM** dentro de la misma cuenta o **entre cuentas** (*cross-account*) |
+| **`AssumeRoleWithSAML`** | Asumir un rol con un usuario autenticado con **SAML** (federación empresarial) |
+| **`AssumeRoleWithWebIdentity`** | Asumir un rol con un token de **proveedor web** (Facebook, Google, OIDC). **No recomendado**: se usa **Cognito Identity Pools** |
+| **`GetSessionToken`** | Credenciales temporales para un **usuario IAM o root**, típicamente para **MFA** |
+| **`GetFederationToken`** | Credenciales temporales para un **usuario federado** que administra una aplicación propia |
+| **`GetCallerIdentity`** | Devuelve **quién es** la identidad que hace la llamada (cuenta, ARN, user ID). **No requiere permisos** |
+| **`DecodeAuthorizationMessage`** | **Decodifica** el mensaje cifrado de un error de **autorización denegada** |
+
+- La **duración** de la sesión de `AssumeRole` es de **15 minutos a 12 horas** (por defecto **1 hora**). Depende del
+  **máximo configurado en el rol** (`MaxSessionDuration`, entre 1 y 12 horas).
+- **Cross-account con `AssumeRole`**:
+  1. En la cuenta destino se crea un **rol** con una **trust policy** que permite a la cuenta origen asumirlo.
+  2. En la cuenta origen se da al usuario el permiso **`sts:AssumeRole`** sobre ese rol.
+  3. El usuario llama a **`AssumeRole`** y recibe **credenciales temporales**. Mientras las usa, **pierde sus permisos
+     originales** y tiene los del rol.
+- **`ExternalId`**: valor secreto que se agrega a la trust policy para evitar el problema del **confused deputy** al dar
+  acceso a **terceros**.
+- Con **MFA**: se agrega la condición **`aws:MultiFactorAuthPresent: true`** en la política, y se llama a
+  **`GetSessionToken`** con el **serial del dispositivo** y el **código**.
+- **Session policy**: política que se pasa al asumir el rol para **restringir aún más** los permisos de la sesión. Los
+  permisos efectivos son la **intersección** entre la política del rol y la de sesión.
+- **Endpoints de STS**: se recomienda usar el **endpoint regional** de STS en lugar del global
+  (`sts.amazonaws.com`) para menor latencia y mayor disponibilidad.
+
+### Federación con SAML y Active Directory
+
+- **SAML 2.0**: permite que usuarios de un **IdP corporativo** (por ejemplo **AD FS**) accedan a la consola o a la CLI
+  **sin crear usuarios IAM**. El flujo usa **`AssumeRoleWithSAML`** y el usuario obtiene una URL de sign-in.
+- **IAM Identity Center (sucesor de AWS SSO)**: **inicio de sesión único** para **múltiples cuentas de AWS** (con
+  **AWS Organizations**) y **aplicaciones** SAML 2.0. Se integra con **Active Directory**, **Okta**, etc. Usa **permission
+  sets** y es lo **recomendado** para federación de personas.
+- **Custom Identity Broker**: aplicación propia que autentica al usuario y llama a **`AssumeRole`** o
+  **`GetFederationToken`** cuando el IdP **no es compatible con SAML 2.0**.
+- **Web Identity Federation**: usar **Cognito Identity Pools**, que es la forma recomendada en lugar de llamar a
+  `AssumeRoleWithWebIdentity` directamente.
+
+### IAM avanzado
+
+#### Lógica de evaluación de políticas
+
+AWS evalúa **todas las políticas aplicables** en este orden:
+
+1. **Denegación explícita** (`Deny`): si hay un **Deny** en cualquier política, el resultado es **denegado**, siempre.
+2. **SCPs** de AWS Organizations: si **no permiten**, se deniega.
+3. **Políticas basadas en recursos**: pueden **permitir** (algunas, dentro de la misma cuenta, sin necesitar permisos de
+   identidad).
+4. **Permissions boundary**: si existe y no permite, se deniega.
+5. **Session policy**: si existe y no permite, se deniega.
+6. **Políticas basadas en identidad**: deben **permitir** la acción.
+7. Si nada permite explícitamente, se aplica el **deny implícito** (por defecto, todo está denegado).
+
+> 📝 **Nota del examen**: **Deny explícito siempre gana**. Sin un `Allow` explícito, el resultado es **deny implícito**.
+
+#### Tipos de políticas
+
+| Política | Descripción |
+| :--- | :--- |
+| **Identity-based** | Se asigna a **usuarios, grupos o roles** (administradas por AWS, administradas por el cliente o **inline**) |
+| **Resource-based** | Se asigna a un **recurso** (S3, SQS, SNS, Lambda, KMS). Incluye un **`Principal`** y permite **acceso entre cuentas** sin asumir rol |
+| **Permissions boundary** | **Límite máximo** de permisos para un **usuario o rol** (no otorga permisos) |
+| **SCP** | **Límite máximo** para las **cuentas** de una **organización** (no otorga permisos) |
+| **Session policy** | Limita los permisos de una **sesión temporal** |
+
+- **Cross-account**: con una **resource-based policy**, el principal **no necesita asumir un rol** y **conserva sus
+  permisos** originales. Con **`AssumeRole`**, se **dejan** los permisos originales y se usan los del rol.
+- **Permissions boundary**: los permisos efectivos son la **intersección** entre la política de identidad y el
+  boundary. Sirve para **delegar la creación de usuarios y roles** a desarrolladores **sin que se den más permisos de
+  los permitidos**.
+- **SCP**: se aplica a **cuentas u OUs**, **no afecta a la cuenta de administración (management account)**, y **sí
+  afecta a root** de las cuentas miembro. Por sí solo **no da permisos**.
+
+#### Condiciones útiles
+
+| Clave | Uso |
+| :--- | :--- |
+| **`aws:SourceIp`** | Restringe por **IP de origen** |
+| **`aws:RequestedRegion`** | Restringe por **región** |
+| **`aws:PrincipalOrgID`** | Permite solo a principals de **una organización** |
+| **`aws:MultiFactorAuthPresent`** | Exige **MFA** |
+| **`aws:SecureTransport`** | Exige **HTTPS** |
+| **`aws:PrincipalTag`** / **`ec2:ResourceTag`** | **Control de acceso basado en atributos (ABAC)** con tags |
+| **`aws:SourceArn`** / **`aws:SourceAccount`** | Evitan el problema del **confused deputy** en servicios |
+
+- Los **operadores de condición** pueden tener sufijos como `IfExists`, y `ForAllValues` / `ForAnyValue` para claves
+  con varios valores.
+- **Variables de política**: por ejemplo **`${aws:username}`** para dar acceso a una carpeta con el nombre de cada
+  usuario.
+- **ABAC** (atributos/tags) escala mejor que **RBAC** (un rol o política por cada caso).
+
+#### Otros conceptos
+
+- **IAM Access Analyzer**: identifica recursos **compartidos con entidades externas** (buckets, roles, claves KMS,
+  colas) y ayuda a generar **políticas de mínimo privilegio** según la actividad registrada en **CloudTrail**.
+- **Credential report**: lista **todos los usuarios** y el estado de sus credenciales (a nivel de **cuenta**).
+- **Access Advisor** (last accessed): muestra **qué servicios usó** un usuario o rol (a nivel de **usuario**).
+- **Roles de servicio** (*service roles*) y **service-linked roles**: roles que un **servicio de AWS** asume en tu nombre.
+  Los service-linked están **predefinidos** por el servicio.
+
+### `iam:PassRole`
+
+Para **pasar un rol a un servicio** (por ejemplo al crear una función Lambda, una instancia EC2 o una tarea de ECS), el
+usuario necesita el permiso **`iam:PassRole`** sobre ese rol, además del permiso de crear el recurso.
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["iam:GetRole", "iam:PassRole"],
+  "Resource": "arn:aws:iam::123456789012:role/S3Access"
+}
+```
+
+- **Evita la escalada de privilegios**: sin este permiso, un usuario podría asociar a un recurso un rol **con más
+  permisos** que los suyos.
+- El rol debe tener una **trust policy** que permita al **servicio** asumirlo (por ejemplo `ec2.amazonaws.com` o
+  `lambda.amazonaws.com`).
+- `iam:PassRole` **no es una llamada de API**: es un **permiso** que se evalúa al llamar a otra API. Se puede limitar
+  con la condición **`iam:PassedToService`**.
+
+### AWS Directory Services
+
+> 🔗 **Documentación oficial**: [AWS Directory Service](https://docs.aws.amazon.com/directoryservice/latest/admin-guide/what_is.html)
+
+**Active Directory (AD)** es una base de datos de **objetos** (usuarios, cuentas, computadoras, impresoras) que se
+administra de forma central en redes **Windows**. **AWS Directory Service** ofrece tres maneras de usar AD en AWS:
+
+| Servicio | Descripción | Cuándo usarlo |
+| :--- | :--- | :--- |
+| **AWS Managed Microsoft AD** | AD **real de Microsoft** administrado por AWS, con usuarios **propios en AWS**. Soporta **trust** con un AD on-premises y **MFA** | Cuando se necesita un **AD completo** en AWS, con **relación de confianza** con on-premises |
+| **AD Connector** | **Proxy** que **redirige** las requests a un **AD on-premises**. No guarda usuarios en AWS | Cuando se quiere **usar solo el AD on-premises existente** |
+| **Simple AD** | **AD compatible** (basado en **Samba 4**), **independiente** y **económico**. **No** se puede conectar a un AD on-premises | Cuando se necesita un directorio **básico**, sin conexión al on-premises |
+
+- Se integra con **EC2** (unir instancias Windows al dominio), **RDS for SQL Server**, **WorkSpaces**, **QuickSight**,
+  **IAM Identity Center** y la **consola de AWS**.
+- **Trust relationship**: con **AWS Managed Microsoft AD** se puede crear una **relación de confianza** de uno o dos
+  sentidos con un AD on-premises.
+
+> 📝 **Nota del examen**: **AD on-premises existente y solo redirigir**: **AD Connector**. **AD real en AWS con trust al
+> on-premises**: **Managed Microsoft AD**. **AD barato y simple, sin on-premises**: **Simple AD**.
+
+## Seguridad y Cifrado
+
+> 🔗 **Documentación oficial**: [AWS Key Management Service](https://docs.aws.amazon.com/kms/latest/developerguide/overview.html)
+
+### Conceptos de cifrado
+
+- **Cifrado en tránsito (in flight)**: protege los datos **mientras viajan** por la red, con **TLS/SSL** (HTTPS). Evita
+  ataques *man-in-the-middle*.
+- **Cifrado en reposo (at rest)**: protege los datos **almacenados** (discos, bases de datos, S3). Se cifran al
+  guardarse y se descifran al leerse, usando una **clave**.
+- **Cifrado del lado del cliente (client-side)**: el **cliente cifra** los datos **antes de enviarlos** y el servidor
+  **nunca puede descifrarlos**. El cliente es responsable de la clave. Se puede usar **envelope encryption**.
+- **Cifrado simétrico**: **una sola clave** cifra y descifra (**AES-256**). Es lo que usan la mayoría de los servicios.
+- **Cifrado asimétrico**: **par de claves**, una **pública** (cifrar o verificar) y una **privada** (descifrar o
+  firmar). Útil para cuando **quien cifra no puede llamar a la API de KMS**.
+
+### AWS KMS (Key Management Service)
+
+**KMS** permite **crear y administrar claves de cifrado**. Está **integrado con IAM** (permisos) y con la mayoría de los
+servicios (EBS, S3, RDS, SSM, Lambda, DynamoDB...). Todas las llamadas quedan en **CloudTrail**. Las claves **nunca
+salen sin cifrar** de KMS.
+
+#### Tipos de KMS keys
+
+| Tipo | Descripción |
+| :--- | :--- |
+| **AWS owned keys** | De **AWS**, usadas por el servicio, **sin costo** y **no visibles** en la cuenta |
+| **AWS managed keys** | Creadas por AWS en tu cuenta, con alias **`aws/<servicio>`** (por ejemplo `aws/s3`). **Gratis**, rotación **automática** cada **año** |
+| **Customer managed keys** | Creadas y administradas **por el cliente**. Cuestan **1 USD por mes** más el uso. Rotación **opcional** (automática cada **año** por defecto, con período configurable de 90 a 2560 días) |
+
+- Las claves **simétricas** (AES-256) nunca se pueden **ver ni exportar**: hay que usar la **API de KMS**.
+- Las claves **asimétricas** (RSA, ECC) tienen **clave pública descargable** y la privada **no sale** de KMS.
+- Las claves de KMS son **regionales**: una clave de una región **no se puede usar** en otra. Para copiar un volumen o
+  snapshot cifrado a otra región, se **re-cifra** con una clave de la región destino.
+- **Alias**: nombre amigable (por ejemplo `alias/mi-clave`) para referirse a una clave.
+- **Eliminar una clave**: **no se borra de inmediato**. Se programa con una **ventana de espera de 7 a 30 días** (por
+  defecto 30). Durante ese tiempo se puede **cancelar**. Alternativa: **deshabilitar** la clave.
+
+#### Key policies y permisos
+
+- **Key policy**: **política de recursos obligatoria** de cada clave. Controla quién la usa y administra.
+  - **Default key policy**: da acceso a **toda la cuenta** (**root**), y así se pueden usar **políticas de IAM** para
+    dar permisos.
+  - **Custom key policy**: define **usuarios y roles específicos**. Es útil para **acceso entre cuentas**.
+- Para que un usuario use una clave, **debe permitirlo la key policy**, y además (si la key policy delega en IAM) la
+  **política de IAM**.
+- **Acceso entre cuentas**: la **key policy** de la cuenta dueña debe permitir a la **otra cuenta**, y en la otra
+  cuenta una **política IAM** debe dar el permiso.
+- **Grants**: otorgan **permisos temporales y programáticos** sobre una clave a un principal (usado por servicios como
+  EBS), **sin editar la key policy**, y se pueden **revocar**.
+- **Condición `kms:ViaService`**: limita el uso de la clave **a un servicio específico** (por ejemplo solo vía S3).
+
+#### Copiar snapshots cifrados entre regiones
+
+1. Se crea un **snapshot** cifrado con una **clave KMS A** en la región origen.
+2. Se **copia** a la región destino y **se re-cifra** con una **clave KMS B** de esa región.
+3. Se crea un **volumen** o una **AMI** con la copia.
+
+#### Multi-Region Keys
+
+- Conjunto de **claves** en **distintas regiones** que comparten el **mismo ID de clave** (`mrk-...`) y el **mismo
+  material**. Se pueden **cifrar en una región y descifrar en otra** sin re-cifrar.
+- Son **independientes**: cada una tiene su **propia key policy**, y se administran por separado.
+- Casos de uso: **DynamoDB Global Tables**, **Aurora Global Database**, **cifrado del lado del cliente** global.
+
+#### Envelope encryption
+
+KMS **cifra directamente datos de hasta 4 KB** con la API **`Encrypt`**. Para datos **más grandes** se usa
+**envelope encryption**:
+
+1. Se llama a **`GenerateDataKey`**: KMS devuelve una **data key en texto plano** y la **misma data key cifrada**.
+2. Se **cifran los datos** con la data key en texto plano (localmente) y luego se **descarta** esa clave de memoria.
+3. Se guarda **junto** el dato cifrado y la **data key cifrada** (el "sobre").
+4. Para **descifrar**: se llama a **`Decrypt`** con la data key cifrada, se obtiene la clave en texto plano y se
+  **descifra** el dato.
+
+| API | Qué hace |
+| :--- | :--- |
+| **`Encrypt`** | Cifra **hasta 4 KB** con una KMS key |
+| **`Decrypt`** | Descifra datos cifrados con KMS |
+| **`GenerateDataKey`** | Devuelve la data key **en texto plano y cifrada** |
+| **`GenerateDataKeyWithoutPlaintext`** | Devuelve **solo la data key cifrada** (para usar **más tarde**) |
+| **`GenerateRandom`** | Devuelve **bytes aleatorios** |
+| **`ReEncrypt`** | **Re-cifra** datos con otra clave **sin exponer** el texto plano |
+
+- **AWS Encryption SDK**: librería **del lado del cliente** que **implementa envelope encryption**. **No es lo
+  mismo** que el **S3 Encryption Client** (que es otra librería). Permite **Data Key Caching** para reducir llamadas a
+  KMS.
+- **Data Key Caching**: reutiliza data keys para **reducir las llamadas a KMS** y evitar el throttling, a cambio de algo
+  de **seguridad**.
+
+#### Cuotas y throttling de KMS
+
+- Cada llamada a las APIs criptográficas (`Encrypt`, `Decrypt`, `GenerateDataKey`, etc.) cuenta para una **cuota
+  compartida por región y cuenta**, que depende de la región (por ejemplo **5500, 10000 o 30000 requests por segundo**
+  según la región y el tipo de clave).
+- Si se supera, KMS devuelve **`ThrottlingException`**. Soluciones: **exponential backoff**, **Data Key Caching**,
+  **pedir un aumento de cuota**, o usar **envelope encryption** para reducir las llamadas.
+
+> 📝 **Nota del examen**: con **`ThrottlingException`** en KMS, aplicar **exponential backoff** y, si es posible, usar
+> **Data Key Caching** o **envelope encryption**. Para cifrar **más de 4 KB**, se usa **`GenerateDataKey`**.
+
+#### Integraciones con KMS
+
+- **S3**: **SSE-KMS** con **S3 Bucket Keys** para reducir las llamadas a KMS.
+- **EBS** (volúmenes cifrados), **RDS**, **DynamoDB**, **Lambda** (variables de entorno), **SQS**, **SNS**, **CloudWatch
+  Logs**, **SSM Parameter Store** (SecureString), **Secrets Manager**.
+- **Variables de entorno de Lambda**: se pueden **cifrar con una clave de KMS** y ver el **valor cifrado** en la
+  consola (**encryption helpers**).
+
+### AWS CloudHSM
+
+- **HSM** (*Hardware Security Module*): **hardware dedicado** para almacenar y administrar claves. AWS **aprovisiona el
+  hardware** pero **no tiene acceso a tus claves**.
+- **El cliente administra las claves** (usuarios, permisos y rotación). Cumple **FIPS 140-2 Nivel 3**. KMS, en cambio, es
+  **administrado por AWS** (multi-tenant).
+- Soporta claves **simétricas y asimétricas**. Se integra con KMS mediante un **custom key store**. Para acceder se usan
+  **PKCS#11, Java JCE y Microsoft CNG**. **No se integra directamente** con los servicios de AWS como KMS.
+- Alta disponibilidad con clusters **multi-AZ**.
+
+### SSM Parameter Store
+
+> 🔗 **Documentación oficial**: [Parameter Store](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html)
+
+Almacén **seguro y serverless** de **configuraciones y secretos**, con **cifrado opcional** con KMS y **versionado**.
+
+- **Tipos de parámetro**: **`String`**, **`StringList`** y **`SecureString`** (cifrado con **KMS**).
+- **Jerarquía** de parámetros con **rutas** (`/mi-app/dev/db-url`). Se puede obtener un **árbol** completo con
+  **`GetParametersByPath`** (con `--recursive`).
+- **Seguridad con IAM**, **notificaciones con EventBridge** y **integración con CloudFormation**.
+- Se obtienen con las APIs **`GetParameter`**, **`GetParameters`** y `GetParametersByPath`. Con **`--with-decryption`**
+  se descifra un `SecureString`.
+- **Versionado** y **timestamps** de cada cambio. Se pueden usar **labels** para referirse a versiones.
+
+| Característica | **Standard** | **Advanced** |
+| :--- | :--- | :--- |
+| Cantidad de parámetros | Hasta **10.000** | Hasta **100.000** |
+| Tamaño máximo del valor | **4 KB** | **8 KB** |
+| **Parameter policies** (por ejemplo **TTL**) | No | **Sí** |
+| Costo | **Gratis** | **Pago** |
+
+- **Parameter policies** (solo Advanced): permiten **expiración (TTL)** de un parámetro, de forma que se **fuerce la
+  actualización** o rotación de datos sensibles, con notificaciones previas por EventBridge.
+- **Parámetros públicos de AWS**: por ejemplo, el **ID de la última AMI** de Amazon Linux
+  (`/aws/service/ami-amazon-linux-latest/...`).
+
+### AWS Secrets Manager
+
+> 🔗 **Documentación oficial**: [AWS Secrets Manager](https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html)
+
+Servicio para **almacenar secretos** (credenciales de bases de datos, claves de API) con **rotación automática** y
+**cifrado con KMS** obligatorio.
+
+- **Rotación automática** cada **N días** mediante una **función Lambda** (que AWS puede crear y configurar para
+  **RDS, Aurora, Redshift, DocumentDB**).
+- Integración nativa con **RDS** y **Aurora**: sincroniza las **credenciales** de la base con el secreto.
+- **Réplicas en múltiples regiones** (multi-region secrets) para **recuperación ante desastres**.
+- **Control de acceso** con **IAM** y **resource policies** (acceso entre cuentas).
+- **Costo**: se paga **por secreto por mes** y por cada **10.000 llamadas de API**.
+
+### Parameter Store vs Secrets Manager
+
+| Característica | **SSM Parameter Store** | **Secrets Manager** |
+| :--- | :--- | :--- |
+| Costo | **Gratis** (Standard) | **Pago** por secreto |
+| **Rotación automática** | **No** (hay que implementarla) | **Sí**, integrada |
+| Cifrado con KMS | **Opcional** (`SecureString`) | **Obligatorio** |
+| Uso principal | **Configuración** y secretos simples | **Secretos** que rotan (bases de datos) |
+| Integración con CloudFormation | **Sí** | **Sí** |
+| Replicación multi-región | No | **Sí** |
+
+> 📝 **Nota del examen**: si hay que **rotar credenciales automáticamente** (por ejemplo de una base de datos), la
+> respuesta es **Secrets Manager**. Si se pide **configuración barata o gratuita**, **Parameter Store**.
+
+### Referencias dinámicas en CloudFormation
+
+CloudFormation puede **leer valores de Parameter Store y Secrets Manager** al crear o actualizar el stack, sin
+guardarlos en la plantilla:
+
+| Sintaxis | Origen |
+| :--- | :--- |
+| **`{{resolve:ssm:parameter-name:version}}`** | Parámetro **`String`** o `StringList` de **Parameter Store** |
+| **`{{resolve:ssm-secure:parameter-name:version}}`** | Parámetro **`SecureString`** de Parameter Store |
+| **`{{resolve:secretsmanager:secreto:SecretString:clave}}`** | Secreto de **Secrets Manager** |
+
+- Con **`AWS::SecretsManager::Secret`** se puede **generar una contraseña aleatoria** (`GenerateSecretString`) y
+  enlazarla a una base de datos con **`AWS::SecretsManager::SecretTargetAttachment`**.
+
+### Cifrado de CloudWatch Logs
+
+- Los **log groups** se pueden **cifrar con una clave de KMS** (a nivel de **grupo**).
+- Se asocia con **`associate-kms-key`** (para un log group existente) o al crearlo con **`create-log-group`** (indicando
+  `--kms-key-id`). **No** se puede hacer desde la consola para uno existente.
+- La key policy debe permitir al servicio de **CloudWatch Logs** usar la clave.
+
+### Seguridad en CodeBuild
+
+- Las **variables de entorno** en el proyecto pueden ser **texto plano**, **Parameter Store** o **Secrets Manager**.
+  **Nunca guardar secretos en texto plano** en las variables ni en el `buildspec`.
+- Dentro del **`buildspec.yml`** se usan **`parameter-store`** y **`secrets-manager`** en la sección `env`.
+- Los **artefactos** y **logs** se pueden **cifrar con KMS**.
+- Se puede ejecutar CodeBuild **dentro de una VPC** para acceder a recursos privados.
+
+### Nitro Enclaves
+
+- **Enclaves aislados** dentro de una instancia EC2 para **procesar datos muy sensibles**, **sin acceso** de usuarios ni
+  de la instancia padre, ni **red externa ni almacenamiento**.
+- Se comunican con la instancia solo por un canal local (**vsock**) y se usa **atestación criptográfica** para verificar
+  su identidad.
+
+### AWS Certificate Manager (ACM)
+
+> 🔗 **Documentación oficial**: [AWS Certificate Manager](https://docs.aws.amazon.com/acm/latest/userguide/acm-overview.html)
+
+**ACM** permite **aprovisionar, administrar y desplegar certificados TLS/SSL** para el cifrado **en tránsito**.
+
+- Soporta certificados **públicos** (**gratis**) y **privados** (con **ACM Private CA**).
+- **Renovación automática** de los certificados emitidos por ACM.
+- **Integraciones**: **ELB**, **CloudFront**, **API Gateway** (custom domains). **No** se pueden instalar directamente en
+  **EC2** (para eso se importan certificados o se usa un ELB).
+- **Validación del dominio**: por **DNS** (recomendada, y se automatiza con Route 53) o por **email**.
+- Los certificados son **regionales**: para **CloudFront** y **API Gateway edge-optimized** deben estar en
+  **us-east-1**. Un certificado **no puede copiarse** entre regiones (hay que **pedir uno en cada región**).
+- Se pueden **importar certificados externos**, pero **no se renuevan automáticamente** (EventBridge puede avisar de
+  la expiración).
+- **ACM Private CA**: **autoridad certificadora privada** para emitir certificados **internos** (**mTLS**, IoT,
+  servicios internos).
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 261 de 448** - Cognito, Step Functions, AppSync y Amplify
+✅ **Completado hasta la lección 261 de 448** - Identidad Avanzada y Seguridad/Cifrado

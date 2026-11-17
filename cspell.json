@@ -109,6 +109,11 @@
     "loguearse",
     "oidc",
     "auditables",
-    "transiciona"
+    "transiciona",
+    "rotarlas",
+    "ABAC",
+    "descargable",
+    "FIPS",
+    "vsock"
   ]
 }
