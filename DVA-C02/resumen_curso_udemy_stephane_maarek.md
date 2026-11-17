@@ -3002,8 +3002,269 @@ Un **construct** es un componente de CDK que representa **uno o más recursos de
 > plantilla y con **`cdk deploy`** se despliega. Antes del primer deploy en una cuenta y región hace falta
 > **`cdk bootstrap`**.
 
+## Amazon Cognito
+
+> 🔗 **Documentación oficial**: [Amazon Cognito Developer Guide](https://docs.aws.amazon.com/cognito/latest/developerguide/what-is-amazon-cognito.html)
+
+**Amazon Cognito** da **identidad a los usuarios de aplicaciones web y móviles**, que **no son usuarios de IAM**. Tiene
+dos componentes principales que resuelven problemas distintos:
+
+| Característica | **User Pools** | **Identity Pools** (Federated Identities) |
+| :--- | :--- | :--- |
+| Función | **Autenticación**: es un **directorio de usuarios** (sign-up y sign-in) | **Autorización**: entrega **credenciales temporales de AWS** |
+| Resultado | **Tokens JWT** (ID, access y refresh token) | **Credenciales de AWS** (vía **STS**) con un **rol IAM** |
+| Para qué sirve | Login de usuarios, integración con **API Gateway** y **ALB** | Acceso **directo a recursos de AWS** (S3, DynamoDB) desde el cliente |
+| Identidades | Usuarios propios, **social** (Google, Facebook, Apple, Amazon), **SAML**, **OIDC** | Un user pool, proveedores sociales, SAML, OIDC, desarrolladores y **usuarios invitados (guest)** |
+
+> 📝 **Nota del examen**: **User Pool = quién eres** (autenticación, tokens JWT). **Identity Pool = qué puedes hacer en
+> AWS** (credenciales temporales con roles IAM). Para que una app móvil acceda **directo a S3 o DynamoDB**, se usa un
+> **Identity Pool**. Para **proteger una API**, se usa un **User Pool**.
+
+### Cognito User Pools (CUP)
+
+- Directorio **serverless** de usuarios con **registro, inicio de sesión, recuperación de contraseña** y verificación
+  por **email o SMS**.
+- **Federación** con proveedores de identidad **sociales** (Google, Facebook, Apple, Amazon), **OIDC** y **SAML**.
+- Seguridad: **MFA** (SMS, TOTP o email), **políticas de contraseña**, **bloqueo de cuentas** y detección de
+  **credenciales comprometidas** y de **comportamiento adaptable** (funciones avanzadas de seguridad).
+- **Hosted UI**: páginas de **login y registro ya armadas**, personalizables y con un **dominio propio** o uno de Cognito.
+  Soporta **OAuth 2.0 y OpenID Connect** (flujos *authorization code* e *implicit*).
+- **Tokens JWT**:
+  - **ID token**: contiene los **datos del usuario** (claims como email o nombre).
+  - **Access token**: se usa para **autorizar** llamadas a APIs y a la API de Cognito. Incluye **scopes** y grupos.
+  - **Refresh token**: sirve para **obtener nuevos** ID y access tokens sin volver a loguearse.
+- **Grupos**: se pueden asignar usuarios a grupos, y cada grupo puede tener un **rol IAM** asociado.
+- **Atributos personalizados** (`custom:`) para guardar datos extra del usuario.
+
+#### Integraciones de User Pools
+
+- **API Gateway** (solo REST API): con un **Cognito User Pools authorizer**, API Gateway **valida el token** y no hace
+  falta código. Se envía el token en el header `Authorization`.
+- **Application Load Balancer**: el ALB puede **autenticar usuarios** con un User Pool (u OIDC) antes de reenviar la
+  request al backend. El **listener debe ser HTTPS**, y el ALB pasa al target la **información del usuario** en
+  headers. La regla de listener usa la acción **`authenticate-cognito`** (o `authenticate-oidc`).
+
+#### Lambda triggers de User Pools
+
+Cognito invoca **funciones Lambda** durante el ciclo de vida del usuario para **personalizar el flujo**:
+
+| Trigger | Cuándo se ejecuta |
+| :--- | :--- |
+| **Pre sign-up** | Antes del registro: permite **validar o rechazar**, o **confirmar automáticamente** |
+| **Post confirmation** | Después de confirmar al usuario (por ejemplo para **mandar un email de bienvenida**) |
+| **Pre authentication** | Antes de autenticar: permite **bloquear** un login |
+| **Post authentication** | Después de autenticar (por ejemplo para **registrar eventos**) |
+| **Pre token generation** | Antes de emitir los tokens: permite **agregar, quitar o cambiar claims** |
+| **Custom message** | **Personaliza** los mensajes de verificación e invitación |
+| **User migration** | **Migra usuarios** de un directorio existente al hacer login |
+| **Custom auth challenge** (Define, Create, Verify) | Arma un **flujo de autenticación propio** |
+
+### Cognito Identity Pools
+
+- Permiten que los usuarios obtengan **credenciales temporales de AWS** para acceder **directo a servicios** como S3 o
+  DynamoDB, sin pasar por un backend.
+- Funciona con identidades de: **User Pools**, **proveedores sociales**, **SAML**, **OIDC**, **developer authenticated
+  identities** y **usuarios invitados** (guest, sin autenticar).
+- Se define **un rol IAM para usuarios autenticados** y **otro para invitados**. También se pueden **elegir roles según
+  reglas** o **según el grupo del usuario**.
+- Las **políticas IAM** del rol pueden usar **variables** como **`${cognito-identity.amazonaws.com:sub}`** para dar
+  acceso **solo a los datos del propio usuario** (por ejemplo, un prefijo de S3 o una clave de DynamoDB con
+  `dynamodb:LeadingKeys`).
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["s3:GetObject", "s3:PutObject"],
+  "Resource": "arn:aws:s3:::mi-bucket/${cognito-identity.amazonaws.com:sub}/*"
+}
+```
+
+### Cognito Sync y AppSync
+
+- **Cognito Sync** (servicio antiguo) sincronizaba datos de usuario entre dispositivos y está **reemplazado por AWS
+  AppSync**.
+
+### Flujo típico
+
+1. El usuario inicia sesión en el **User Pool** y recibe los **tokens JWT**.
+2. La app envía el **ID token** al **Identity Pool**.
+3. El Identity Pool valida el token y obtiene **credenciales temporales** de **STS** con el rol IAM correspondiente.
+4. La app usa esas credenciales para llamar a **S3, DynamoDB** u otros servicios.
+
+## AWS Step Functions
+
+> 🔗 **Documentación oficial**: [AWS Step Functions Developer Guide](https://docs.aws.amazon.com/step-functions/latest/dg/welcome.html)
+
+**Step Functions** es un servicio de **orquestación serverless** que permite armar **workflows** como **máquinas de
+estado** (*state machines*), con una **representación visual**. Coordina funciones Lambda, contenedores y más de **200
+servicios de AWS**.
+
+- Cada ejecución de un workflow es una **execution**.
+- Los workflows se definen en **Amazon States Language (ASL)**, un **JSON**.
+- Permiten **manejo de errores, reintentos, paralelismo, ramificaciones y esperas**, sin escribir ese código en Lambda.
+- Se pueden **iniciar** desde **API Gateway, EventBridge, SDK, CLI, Lambda, Console** u otras fuentes.
+
+### Tipos de workflow
+
+| Característica | **Standard** | **Express** |
+| :--- | :--- | :--- |
+| Duración máxima | **1 año** | **5 minutos** |
+| Semántica de ejecución | **Exactly-once** | **At-least-once** (asíncrono) o **at-most-once** (síncrono) |
+| Ritmo de ejecuciones | Más de 2000 por segundo | **Más de 100.000 por segundo** |
+| Historial | Hasta **90 días**, visible en la consola y la API | Se envía a **CloudWatch Logs** |
+| Precio | Por **transición de estado** | Por **número de ejecuciones, duración y memoria** |
+| Uso típico | Procesos **largos**, **auditables**, con aprobaciones humanas | **Alto volumen** y corta duración (procesamiento de eventos, IoT) |
+
+- **Express síncrono**: la llamada **espera el resultado** (por ejemplo desde API Gateway). **Express asíncrono**:
+  devuelve que **arrancó** y el resultado se ve en los logs.
+
+### Tipos de estado (states)
+
+| Estado | Función |
+| :--- | :--- |
+| **`Task`** | **Hace trabajo**: invoca una Lambda, un servicio de AWS, una actividad o una API de HTTP |
+| **`Choice`** | **Bifurca** según condiciones (como un `if/else` o `switch`). Conviene incluir un **`Default`** |
+| **`Wait`** | **Espera** un tiempo fijo (`Seconds`) o hasta una fecha (`Timestamp`) |
+| **`Parallel`** | Ejecuta **ramas en paralelo** y junta los resultados |
+| **`Map`** | Ejecuta **los mismos pasos para cada elemento** de una lista (el **Distributed Map** escala a miles de ejecuciones paralelas sobre datos de S3) |
+| **`Pass`** | Pasa la entrada a la salida, con transformaciones opcionales (útil para pruebas) |
+| **`Succeed`** | **Termina** la ejecución con éxito |
+| **`Fail`** | **Termina** la ejecución con **error** |
+
+```json
+{
+  "StartAt": "ProcesarPedido",
+  "States": {
+    "ProcesarPedido": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:procesar",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "Next": "Fallo" }
+      ],
+      "End": true
+    },
+    "Fallo": { "Type": "Fail", "Error": "PedidoFallido" }
+  }
+}
+```
+
+### Manejo de errores
+
+El manejo de errores se hace **dentro de la state machine**, **no en el código de la función**. Se define con
+**`Retry`** y **`Catch`** en los estados `Task`, `Parallel` y `Map`.
+
+- **`Retry`**: **reintenta** el estado según el error. Parámetros: **`ErrorEquals`**, **`IntervalSeconds`** (por
+  defecto 1), **`MaxAttempts`** (por defecto **3**; con **0** no reintenta) y **`BackoffRate`** (por defecto **2.0**).
+  También admite `MaxDelaySeconds` y `JitterStrategy`.
+- **`Catch`**: si se agotan los reintentos (o no hay), **captura el error** y **transiciona a otro estado**. Con
+  **`ResultPath`** se decide dónde guardar la información del error en el JSON de salida.
+- **Nombres de error predefinidos**:
+
+| Error | Significado |
+| :--- | :--- |
+| **`States.ALL`** | **Comodín** que coincide con **cualquier error** (debe ir **último** en la lista) |
+| **`States.Timeout`** | La tarea **superó** `TimeoutSeconds` o no mandó el **heartbeat** a tiempo |
+| **`States.TaskFailed`** | **Falló** la tarea (excepto `States.Timeout`) |
+| **`States.Permissions`** | La tarea **no tiene permisos** |
+| **`States.HeartbeatTimeout`** | No llegó el **heartbeat** a tiempo |
+| **`States.NoChoiceMatched`** | Un `Choice` **no coincidió** con ninguna regla y no tiene `Default` |
+
+- Los errores de una **Lambda** (excepciones propias o de servicio como `Lambda.ServiceException`,
+  `Lambda.TooManyRequestsException`) también se pueden capturar por **nombre**.
+
+### Integraciones de servicio (patrones de `Resource`)
+
+| Patrón | Comportamiento |
+| :--- | :--- |
+| **Request Response** (por defecto) | Llama al servicio y **sigue apenas recibe la respuesta HTTP**, sin esperar que el trabajo termine |
+| **Run a Job** (`.sync`) | **Espera a que el trabajo termine** (por ejemplo un job de **AWS Batch**, una **tarea de ECS** o un job de **Glue**) |
+| **Wait for Callback** (`.waitForTaskToken`) | **Pausa** el workflow hasta que se devuelve un **task token** con `SendTaskSuccess` o `SendTaskFailure` |
+
+- **Task token**: se pasa al otro sistema (por ejemplo en un mensaje de **SQS**, o a un proceso humano). El workflow se
+  detiene hasta que algo llama a **`SendTaskSuccess`** o **`SendTaskFailure`**. Con **`HeartbeatSeconds`** se detecta
+  si el proceso se colgó. Es la manera de implementar **aprobaciones humanas** o **integración con sistemas externos**.
+- **Activity tasks**: un **worker** externo (EC2, on-premises, un móvil) consulta a Step Functions con
+  **`GetActivityTask`** (**polling**), hace el trabajo y devuelve el resultado con `SendTaskSuccess` o
+  `SendTaskFailure`. Se usan **heartbeats** para saber que sigue vivo.
+- **Optimized integrations** (por ejemplo Lambda, DynamoDB, SNS, SQS, ECS, Batch) y **AWS SDK integrations**
+  (más de 200 servicios y miles de APIs).
+
+### Procesamiento de datos de entrada y salida
+
+Cada estado puede filtrar y transformar el JSON con **`InputPath`**, **`Parameters`**, **`ResultSelector`**,
+**`ResultPath`** y **`OutputPath`** (JSONPath), o con **JSONata** en las versiones nuevas.
+
+### Seguridad y monitoreo
+
+- La state machine usa un **rol de ejecución IAM** con permisos para los servicios que invoca.
+- **Logging** a **CloudWatch Logs**, **métricas** en CloudWatch y **trazas** con **X-Ray**.
+- **EventBridge** recibe **eventos de cambio de estado** de las ejecuciones.
+
+> 📝 **Nota del examen**: para **orquestar varias funciones Lambda** con manejo de errores, reintentos y esperas, la
+> respuesta es **Step Functions**. **Standard** para flujos largos (hasta 1 año) y **exactly-once**. **Express** para
+> **alto volumen** y menos de 5 minutos. Para **esperar a un humano o un sistema externo**, **`.waitForTaskToken`**.
+
+## AWS AppSync
+
+> 🔗 **Documentación oficial**: [AWS AppSync Developer Guide](https://docs.aws.amazon.com/appsync/latest/devguide/what-is-appsync.html)
+
+**AWS AppSync** es un servicio administrado que crea **APIs de GraphQL** (y APIs de **Events** por WebSocket) y conecta
+la aplicación con **datos de una o varias fuentes**.
+
+- **GraphQL**: lenguaje de consulta donde el **cliente pide exactamente los campos que necesita**, en **una sola
+  request**, evitando traer de más o hacer muchas llamadas.
+- Tipos de operación: **Query** (leer), **Mutation** (modificar) y **Subscription** (recibir cambios **en tiempo real**
+  mediante **WebSockets**).
+- **Data sources**: **DynamoDB**, **Aurora Serverless**, **OpenSearch**, **funciones Lambda**, **endpoints HTTP** y otros
+  servicios de AWS. En una sola API se pueden **combinar varias fuentes**.
+- **Resolvers**: conectan cada **campo del schema** con una data source. Se escriben con **JavaScript** (runtime
+  **APPSYNC_JS**) o con **VTL (Velocity Template Language)**. Los **pipeline resolvers** encadenan varias funciones.
+- **Tiempo real y offline**: las **subscriptions** dan datos en vivo, y los SDK del cliente (**Amplify**) soportan
+  **sincronización y trabajo offline**. Reemplaza a Cognito Sync.
+- **Caché** administrado opcional y **logs** en CloudWatch.
+
+### Autorización en AppSync
+
+| Modo | Descripción |
+| :--- | :--- |
+| **API Key** | Clave simple, útil para **pruebas o datos públicos** |
+| **IAM** | Con **credenciales de AWS** (por ejemplo desde un Identity Pool) |
+| **Cognito User Pools** | Valida el **token JWT** del usuario (permite autorización por **grupos**) |
+| **OpenID Connect** | Valida tokens de un **proveedor OIDC** |
+| **Lambda authorizer** | **Lógica propia** de autorización |
+
+> 📝 **Nota del examen**: si aparece **GraphQL**, **datos en tiempo real** con subscriptions, o **combinar varias fuentes
+> de datos** en una sola API, la respuesta es **AppSync**.
+
+## AWS Amplify
+
+> 🔗 **Documentación oficial**: [AWS Amplify Hosting User Guide](https://docs.aws.amazon.com/amplify/latest/userguide/welcome.html)
+
+**AWS Amplify** es un conjunto de **herramientas y servicios para construir aplicaciones web y móviles full-stack**
+con rapidez. Se apoya en otros servicios de AWS, que se **aprovisionan por detrás**.
+
+- **Amplify Hosting**: **hosting y CI/CD** para aplicaciones web. Se conecta a un **repositorio Git**, **compila y
+  despliega** en cada push, con **ramas** (branches) y **vistas previas por pull request**.
+- **Amplify Libraries / Framework**: librerías para **web y móvil** (JavaScript, iOS, Android, Flutter, React Native)
+  que simplifican el uso de **Cognito** (auth), **AppSync** y **API Gateway** (APIs), **S3** (storage), **Pinpoint**
+  (analytics) y más.
+- **Amplify CLI / Gen 2**: define el **backend** (auth, datos, funciones, storage) **con código TypeScript**, y lo
+  despliega con **CDK/CloudFormation** por debajo.
+- **Amplify Studio**: **interfaz visual** para armar el backend y la UI (**Figma a código** de componentes React).
+
+> 📝 **Nota del examen**: Amplify es la respuesta cuando se pide **empezar rápido con una app web o móvil** con
+> **autenticación, API, storage y hosting** sin administrar la infraestructura.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 261 de 448** - SAM y CDK
+✅ **Completado hasta la lección 261 de 448** - Cognito, Step Functions, AppSync y Amplify

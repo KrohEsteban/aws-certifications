@@ -104,6 +104,11 @@
     "codeartifact",
     "autocompletado",
     "tipado",
-    "pytest"
+    "pytest",
+    "TOTP",
+    "loguearse",
+    "oidc",
+    "auditables",
+    "transiciona"
   ]
 }
