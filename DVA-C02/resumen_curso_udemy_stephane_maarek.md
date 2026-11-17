@@ -2447,8 +2447,190 @@ tablas, con propiedades **ACID**.
 - **VPC endpoint** (de tipo gateway) para acceder a DynamoDB **sin salir por internet**.
 - **AWS DMS** permite migrar datos hacia DynamoDB desde otras bases (y a la inversa), incluso entre motores distintos.
 
+## Amazon API Gateway
+
+> 🔗 **Documentación oficial**: [Amazon API Gateway Developer Guide](https://docs.aws.amazon.com/apigateway/latest/developerguide/welcome.html)
+
+**API Gateway** es un servicio administrado y serverless para **crear, publicar, proteger y monitorear APIs** a
+cualquier escala. Funciona como la **puerta de entrada** de las aplicaciones: recibe las requests de los clientes y las
+envía a un backend, que puede ser una **función Lambda**, un **endpoint HTTP** o una **acción de un servicio de AWS**.
+
+Entre sus funciones se destacan el **manejo de versiones y de múltiples ambientes** (stages), la **autenticación y
+autorización**, el **throttling**, la **validación de requests**, el **caché** y la **generación de SDKs y de
+documentación**.
+
+### Tipos de API
+
+| Característica | **REST API** | **HTTP API** | **WebSocket API** |
+| :--- | :--- | :--- | :--- |
+| Qué es | La opción original, con **todas las funciones** | Versión más simple, **más barata** (alrededor de 70%) y con menor latencia | Conexiones **bidireccionales persistentes** para tiempo real |
+| Autorización | IAM, Cognito User Pools, Lambda authorizer | IAM, Lambda authorizer, **JWT authorizer** nativo | IAM, Lambda authorizer (en `$connect`) |
+| Caché, usage plans y API keys | **Sí** | **No** | No |
+| Validación de requests, WAF | **Sí** | No | No |
+| Mapping templates (transformaciones) | **Sí** | Limitadas | Sí |
+| CORS | Se configura por recurso | **Configuración simple** y automática | No aplica |
+
+> 📝 **Nota del examen**: si una pregunta pide **API keys, usage plans, caché o transformaciones de request**, la
+> respuesta es **REST API**. Si pide **menor costo y menor latencia** con un proxy simple, **HTTP API**. Si pide
+> **comunicación bidireccional en tiempo real** (chat, notificaciones), **WebSocket API**.
+
+### Tipos de endpoint
+
+- **Edge-optimized** (por defecto en las REST APIs): las requests entran por el **punto de presencia de CloudFront** más
+  cercano. Es lo mejor para clientes **distribuidos geográficamente**.
+- **Regional**: pensado para clientes en la **misma región** de la API.
+- **Private**: solo se accede **desde una VPC**, mediante un VPC endpoint de interfaz.
+
+**Custom domain names**: se usa un dominio propio con un certificado de **ACM**. Para un endpoint **edge-optimized** el
+certificado debe estar en **us-east-1**, y para uno **regional** debe estar en la **misma región** de la API. Luego se
+crea un **alias record en Route 53** hacia el dominio de API Gateway.
+
+### Tipos de integración
+
+| Tipo | Descripción |
+| :--- | :--- |
+| **`AWS_PROXY`** (Lambda proxy) | La request completa llega a la Lambda como evento y la **Lambda arma la respuesta**. Es la más simple y la más usada |
+| **`AWS`** (custom) | Integración con una función Lambda **o cualquier servicio de AWS**, con **mapping templates** para transformar request y respuesta |
+| **`HTTP_PROXY`** | Pasa la request y la respuesta **sin cambios** a un endpoint HTTP |
+| **`HTTP`** | Integración con un endpoint HTTP con **mapping templates** |
+| **`MOCK`** | API Gateway responde **sin llamar a ningún backend**, útil para pruebas o para el preflight de CORS |
+
+- Con **Lambda proxy**, la función debe devolver un JSON con `statusCode`, `headers` y `body`. Si el formato es
+  incorrecto, API Gateway devuelve **502 (Bad Gateway)**.
+- **Mapping templates**: usan el lenguaje **VTL (Velocity Template Language)** y solo aplican en las integraciones
+  **no proxy**. Permiten **renombrar o agregar parámetros**, modificar el body o los headers, **filtrar** campos de la
+  respuesta o convertir formatos (por ejemplo, **XML a JSON**).
+- **VPC Link**: permite que API Gateway llegue a recursos **privados dentro de una VPC** (por ejemplo, un NLB interno).
+
+### Stages y deployments
+
+- Un cambio en la API **no se aplica hasta que se hace un deployment**. Un **deployment** es una **foto** de la API.
+- Un **stage** es una **referencia con nombre a un deployment** (por ejemplo `dev`, `test`, `prod`). Cada stage tiene su
+  propia **URL**, y se pueden configurar caché, throttling, logging y variables.
+- **Stage variables**: pares clave-valor que actúan como **variables de entorno** de la API. Se usan, por ejemplo, para
+  apuntar cada stage a un **alias distinto de una Lambda** o a otro endpoint HTTP, y en los mapping templates.
+- Para hacer **rollback** basta con que el stage apunte de nuevo a un deployment anterior.
+
+### Canary deployments
+
+Un **canary release** separa el tráfico de un stage en dos: una porción **pequeña** va a la **versión nueva** (canary) y
+el resto sigue en la versión de **producción**, según una **proporción configurable**.
+
+- Se pueden **monitorear los logs y las métricas del canary** por separado.
+- Cuando la nueva versión funciona bien, se **promueve** el canary a producción y la proporción vuelve a cero.
+- El stage guarda el deployment base y el canary guarda el deployment nuevo.
+
+### Caché de la API
+
+- El caché es **por stage** y solo existe en las **REST APIs**. Guarda las respuestas del backend para **reducir la
+  latencia y la carga** sobre el backend.
+- **TTL por defecto: 300 segundos**, con un máximo de **3.600**. Un TTL de **0** desactiva el caché.
+- Se puede **sobrescribir** la configuración **por método**, y **invalidar** el caché completo.
+- Un cliente puede **saltearse el caché** con el header `Cache-Control: max-age=0`, siempre que tenga el **permiso de
+  IAM** correspondiente.
+- El caché tiene un **costo por hora** según su tamaño.
+
+### Usage plans, API keys y throttling
+
+- Un **usage plan** define **quién puede acceder** a qué stages y **cuánto**: un **límite de rate y burst**
+  (throttling) y una **cuota** (requests por día, semana o mes).
+- Las **API keys** identifican a los clientes y se **asocian a un usage plan**. El cliente las envía en el header
+  **`x-api-key`**.
+- Las API keys **no sirven para autenticar ni autorizar**: para eso se usan IAM, Cognito o un Lambda authorizer.
+- **Límites de throttling por defecto**: **10.000 requests por segundo** por cuenta y región, con un **burst de 5.000**.
+  Además se puede limitar por stage y por método.
+- Al superar el límite, API Gateway responde **429 Too Many Requests**.
+
+### Seguridad: autenticación y autorización
+
+| Mecanismo | Cómo funciona | Cuándo usarlo |
+| :--- | :--- | :--- |
+| **IAM** (SigV4) | El cliente firma la request con credenciales de AWS y se valida con **políticas de IAM** | Usuarios y roles de AWS, otros servicios, acceso entre cuentas |
+| **Cognito User Pools authorizer** | API Gateway **valida el token JWT** de Cognito, sin código propio | Aplicaciones web y móviles con usuarios en Cognito |
+| **Lambda authorizer** (custom) | Una Lambda recibe el token o la request y **devuelve una política de IAM** | Tokens de terceros (OAuth, SAML) o lógica propia |
+| **JWT authorizer** (solo HTTP API) | Valida tokens **OIDC / OAuth 2.0** de forma nativa | HTTP APIs |
+
+- El Lambda authorizer puede ser de tipo **TOKEN** (recibe un token en un header) o **REQUEST** (recibe headers, query
+  strings y contexto).
+- Los resultados del authorizer se pueden **cachear**: TTL por defecto de **300 segundos**, máximo de **3.600**, y **0**
+  lo desactiva. Con caché activo, la política devuelta se aplica a las requests siguientes del mismo token.
+- **Resource policies**: documentos JSON asociados a la API, que permiten, por ejemplo, **acceso entre cuentas** o
+  **restringir por IP o por VPC**.
+- Las REST APIs se integran con **AWS WAF** para filtrar tráfico malicioso.
+
+### CORS
+
+Para que un navegador llame a la API desde otro origen hay que habilitar **CORS** (ver la sección de S3 CORS).
+
+- El navegador envía antes una request **preflight `OPTIONS`**. La API debe responder con los headers
+  `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods` y `Access-Control-Allow-Headers`.
+- En una **REST API** se habilita CORS **en cada recurso** (API Gateway crea el método `OPTIONS`). Con **Lambda
+  proxy**, además, **la función debe devolver los headers CORS** en la respuesta.
+- En una **HTTP API**, al configurar CORS API Gateway responde **automáticamente** el preflight.
+- Si la Lambda falla o supera el timeout, API Gateway genera una respuesta 5xx **sin headers CORS**, y el navegador lo
+  muestra como un **error de CORS** que oculta el problema real del backend.
+
+### Monitoreo, logs y tracing
+
+- **Execution logging**: registra lo que hace API Gateway para procesar cada request (errores, trazas, parámetros,
+  datos del authorizer, uso de API keys).
+- **Access logging**: registra **quién accedió** a la API y cómo, con el formato que se elija.
+- Ambos van a **CloudWatch Logs** y se habilitan **por stage**. Requieren que la cuenta tenga un **rol de IAM** que le
+  permita a API Gateway escribir en CloudWatch.
+- **Métricas de CloudWatch**: `Count` (total de requests), `Latency` (tiempo total desde que API Gateway recibe la
+  request hasta que responde), `IntegrationLatency` (tiempo del backend), `4XXError`, `5XXError`, `CacheHitCount` y
+  `CacheMissCount`.
+- **X-Ray**: se puede habilitar el tracing en el stage para ver el recorrido completo de cada request.
+
+**Errores frecuentes**:
+
+- **400**: request inválida o que **no pasó la validación**.
+- **403**: acceso denegado (authorizer, resource policy, WAF o API key inválida).
+- **429**: **throttling**.
+- **502 (Bad Gateway)**: respuesta del backend con **formato inválido** (por ejemplo, una Lambda proxy mal armada).
+- **503**: servicio no disponible.
+- **504 (Gateway Timeout)**: el backend tardó más que el **timeout de integración**, que por defecto es de **29
+  segundos** en las REST APIs (se puede pedir un aumento por Service Quotas).
+
+### OpenAPI y validación de requests
+
+- API Gateway permite **importar y exportar** definiciones de API en formato **OpenAPI 3.0 / Swagger 2.0**, con
+  **extensiones propias** (`x-amazon-apigateway-*`) para las integraciones, los authorizers y los validators.
+- Tras importar una API con Lambda en otra cuenta o región, hay que **volver a otorgar el permiso** de invocación sobre
+  la función (se vuelve a seleccionar la Lambda en la integración).
+- La **validación de requests** rechaza con un **400** las requests que no cumplan el **modelo (JSON Schema)** o los
+  parámetros requeridos, **antes de llegar al backend**, lo que ahorra invocaciones y costos.
+
+### WebSocket API
+
+Una **WebSocket API** mantiene una **conexión persistente y bidireccional**: el cliente envía mensajes al servicio y el
+servicio puede enviar mensajes al cliente **por su cuenta**. Se usa en **chats**, dashboards en tiempo real, juegos y
+notificaciones.
+
+- Rutas predefinidas: **`$connect`** (al abrir la conexión), **`$disconnect`** (al cerrarla) y **`$default`** (para los
+  mensajes que no coinciden con otra ruta). También se pueden definir **rutas propias**.
+- **Route selection expression**: expresión que se evalúa sobre cada mensaje para **elegir la ruta**, por ejemplo
+  `$request.body.action`. Si ninguna ruta coincide se usa `$default`.
+- La **autorización** se configura **solo en `$connect`**: se valida al establecer la conexión.
+- Para que el backend **envíe un mensaje a un cliente conectado** se usan los comandos de **`@connections`**: un `POST`
+  a la **connection URL** (`.../@connections/{connectionId}`) envía un mensaje, un `GET` devuelve información de la
+  conexión y un `DELETE` desconecta al cliente. Hay que guardar los **connection ID**, por ejemplo en **DynamoDB**.
+
+### Arquitectura típica
+
+Un esquema serverless habitual combina varios servicios:
+
+1. El cliente (web o móvil) llama a **API Gateway**, opcionalmente detrás de **CloudFront**.
+2. **Cognito** (o un Lambda authorizer) autentica al usuario.
+3. API Gateway invoca una **función Lambda**.
+4. La Lambda lee y escribe en **DynamoDB** (con **DAX** o **ElastiCache** si hace falta acelerar las lecturas).
+5. **CloudWatch** y **X-Ray** dan visibilidad de todo el recorrido.
+
+Si el backend necesita procesamiento asíncrono, API Gateway puede integrarse directamente con **SQS**, **SNS**,
+**Kinesis** o **Step Functions**, sin pasar por Lambda.
+
 ---
 
 ## Progreso del Curso
 
-✅ **Completado hasta la lección 261 de 448** - DynamoDB
+✅ **Completado hasta la lección 261 de 448** - API Gateway
