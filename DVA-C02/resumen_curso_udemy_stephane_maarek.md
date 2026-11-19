@@ -2026,6 +2026,7 @@ cerca del usuario.
 | Runtime | JavaScript | Node.js o Python |
 | Eventos de CloudFront | Solo los de **viewer** (viewer request y viewer response) | Los **cuatro**: viewer request, viewer response, origin request y origin response |
 | Rendimiento | Arranque en **menos de un milisegundo**, escala a millones de requests por segundo | Funciones de Lambda completas, con más capacidad y más latencia |
+| Dónde se ejecuta | En los **edge locations** (los más cercanos al usuario) | En los **Regional Edge Caches** |
 | Despliegue | Feature nativa de CloudFront: se crea, prueba y despliega dentro de CloudFront | Se publica en **una sola región** y CloudFront la replica a los edge locations |
 | Uso típico | Cambios livianos: reescribir URLs, manipular headers, validaciones simples | Lógica más pesada o que necesita las capacidades completas de Lambda |
 
@@ -2097,6 +2098,7 @@ La **concurrencia** es la cantidad de ejecuciones de la función que ocurren a l
   los **cold starts** y se cobra aparte.
 - **Throttling**: si se supera el límite, las invocaciones **síncronas** reciben un error **429
   (`TooManyRequestsException`)**. Las **asíncronas** se reintentan, y el evento se retiene hasta 6 horas.
+  Si los reintentos se agotan, el evento va a la **DLQ** o a una **destination**, si está configurada.
 - Lambda puede crear **1.000 execution environments cada 10 segundos** para absorber un pico.
 
 ### Dependencias externas
@@ -2140,6 +2142,8 @@ Una función Lambda también se puede empaquetar como **imagen de contenedor**, 
   nueva.
 - Un alias puede repartir el tráfico entre **dos versiones con pesos**: es un **weighted alias**, base de los
   **canary deployments**. Permite probar una versión nueva con poco tráfico y **volver atrás rápido** si falla.
+- Un alias **no puede apuntar a otro alias**: solo a versiones. Y el reparto con pesos admite **como máximo dos
+  versiones**.
 
 ### Lambda y CodeDeploy
 
@@ -2225,7 +2229,8 @@ por segundo y no hay servidores que administrar. Es una de las bases más import
 | **On-demand** | No hay que planificar capacidad: DynamoDB **escala solo** y se paga **por request** (más caro por unidad) | Tráfico impredecible, tablas nuevas o con picos |
 
 - Se puede **cambiar de modo**, con un límite de una vez cada 24 horas. El cambio puede tardar unos minutos.
-- En provisioned, si se supera la capacidad hay **throttling**.
+- En provisioned, si se supera la capacidad primero se usa la **burst capacity** (un excedente temporal). Cuando se
+  agota, hay **throttling**.
 
 ### WCU y RCU
 
